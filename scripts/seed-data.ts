@@ -103,3 +103,70 @@ export const ratingCategorySeed: CategorySeed[] = [
 		negative: ['Noisy', 'Few seats']
 	}
 ];
+
+/** WKT, longitude before latitude — matches src/lib/server/reviews.ts's pointWkt. Duplicated
+ *  rather than imported because this script runs under plain Node (no SvelteKit/$app/env
+ *  context), while reviews.ts pulls in modules (e.g. cloudinary.ts) that require it. */
+function pointWkt(lat: number, lng: number): string {
+	return `SRID=4326;POINT(${lng} ${lat})`;
+}
+
+export interface PlaceSeedEntry {
+	name: string;
+	slug: string;
+	placeCategorySlug: string;
+	addressLine1: string;
+	city: string;
+	countryCode: string;
+	locationWkt: string;
+}
+
+/** The write-a-review prototype's 5 hard-coded Phnom Penh venues (its `PLACES` array), with
+ *  real coordinates added so the place picker and its distance sort have something to search. */
+export const placeSeed: PlaceSeedEntry[] = [
+	{
+		name: 'The Artisan Bakery & Cafe',
+		slug: slugify('The Artisan Bakery & Cafe'),
+		placeCategorySlug: 'bakery',
+		addressLine1: 'Street 240',
+		city: 'Phnom Penh',
+		countryCode: 'KH',
+		locationWkt: pointWkt(11.5633, 104.9195)
+	},
+	{
+		name: 'Brown Coffee Riverside',
+		slug: slugify('Brown Coffee Riverside'),
+		placeCategorySlug: 'cafe',
+		addressLine1: 'Sisowath Quay',
+		city: 'Phnom Penh',
+		countryCode: 'KH',
+		locationWkt: pointWkt(11.5696, 104.9282)
+	},
+	{
+		name: 'Malis Restaurant',
+		slug: slugify('Malis Restaurant'),
+		placeCategorySlug: 'restaurant',
+		addressLine1: 'Norodom Blvd',
+		city: 'Phnom Penh',
+		countryCode: 'KH',
+		locationWkt: pointWkt(11.5583, 104.923)
+	},
+	{
+		name: 'Artillery Café',
+		slug: slugify('Artillery Café'),
+		placeCategorySlug: 'cafe',
+		addressLine1: 'Street 240',
+		city: 'Phnom Penh',
+		countryCode: 'KH',
+		locationWkt: pointWkt(11.563, 104.9198)
+	},
+	{
+		name: 'Kinin Khmer Fusion',
+		slug: slugify('Kinin Khmer Fusion'),
+		placeCategorySlug: 'restaurant',
+		addressLine1: 'Street 21',
+		city: 'Phnom Penh',
+		countryCode: 'KH',
+		locationWkt: pointWkt(11.5675, 104.924)
+	}
+];

@@ -1,5 +1,6 @@
 import './network.ts';
 import { neon } from '@neondatabase/serverless';
+import { inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from '../src/lib/server/db/schema/index.ts';
 import {
@@ -7,6 +8,7 @@ import {
 	drinkTypeSeed,
 	foodTypeSeed,
 	placeCategorySeed,
+	placeSeed,
 	ratingCategorySeed,
 	slugify
 } from './seed-data.ts';
@@ -51,8 +53,43 @@ const options = ratingCategorySeed.flatMap((c) => {
 });
 await db.insert(schema.ratingCriteriaOptions).values(options).onConflictDoNothing();
 
+// places has no unique constraint beyond its primary key, so idempotency here is "insert only
+// the slugs we haven't seen before" rather than onConflictDoNothing against a natural key.
+const placeCategories = await db.select().from(schema.placeCategories);
+const placeCategoryIdBySlug = new Map(placeCategories.map((c) => [c.slug, c.id]));
+
+const existingPlaces = await db
+	.select({ slug: schema.places.slug })
+	.from(schema.places)
+	.where(
+		inArray(
+			schema.places.slug,
+			placeSeed.map((p) => p.slug)
+		)
+	);
+const existingSlugs = new Set(existingPlaces.map((p) => p.slug));
+
+const newPlaces = placeSeed
+	.filter((p) => !existingSlugs.has(p.slug))
+	.map((p) => {
+		const placeCategoryId = placeCategoryIdBySlug.get(p.placeCategorySlug);
+		if (placeCategoryId == null) throw new Error(`Missing place category: ${p.placeCategorySlug}`);
+		return {
+			placeCategoryId,
+			name: p.name,
+			slug: p.slug,
+			location: sql`ST_GeogFromText(${p.locationWkt})`,
+			addressLine1: p.addressLine1,
+			city: p.city,
+			countryCode: p.countryCode,
+			verificationStatus: 'verified' as const
+		};
+	});
+if (newPlaces.length) await db.insert(schema.places).values(newPlaces);
+
 console.log(
 	`Seeded ${placeCategorySeed.length} place categories, ${cuisineSeed.length} cuisines, ` +
 		`${foodTypeSeed.length} food types, ${drinkTypeSeed.length} drink types, ` +
-		`${ratingCategorySeed.length} rating categories, ${options.length} criteria options.`
+		`${ratingCategorySeed.length} rating categories, ${options.length} criteria options, ` +
+		`${newPlaces.length} new places (${existingSlugs.size} already existed).`
 );
