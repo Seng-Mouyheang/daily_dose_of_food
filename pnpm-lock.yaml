@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@clerk/backend':
+        specifier: ^3.22.0
+        version: 3.22.0
       cloudinary:
         specifier: ^2.11.0
         version: 2.11.0
@@ -78,6 +81,9 @@ importers:
       prettier-plugin-tailwindcss:
         specifier: ^0.8.0
         version: 0.8.1(prettier-plugin-svelte@4.1.1(prettier@3.9.9)(svelte@5.57.1(@typescript-eslint/types@8.71.0)))(prettier@3.9.9)
+      standardwebhooks:
+        specifier: ^1.1.1
+        version: 1.1.1
       svelte:
         specifier: ^5.57.1
         version: 5.57.1(@typescript-eslint/types@8.71.0)

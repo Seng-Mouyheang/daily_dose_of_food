@@ -16,6 +16,12 @@ export default defineConfig({
 			adapter: adapter()
 		})
 	],
+	server: {
+		// Lets an ngrok tunnel reach the dev server, e.g. for testing the Clerk webhook locally.
+		// The leading dot matches the whole subdomain, so this survives ngrok's free-tier URLs
+		// changing on every restart.
+		allowedHosts: ['.ngrok-free.app', '.ngrok-free.dev']
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

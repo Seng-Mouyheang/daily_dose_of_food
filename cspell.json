@@ -40,6 +40,10 @@
 		"nvmrc",
 		"esbenp",
 		"dbaeumer",
-		"bradlc"
+		"bradlc",
+		"standardwebhooks",
+		"totp",
+		"svix",
+		"whsec"
 	]
 }

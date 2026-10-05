@@ -20,7 +20,8 @@
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio",
 		"spellcheck": "cspell \"**/*.{ts,js,svelte,md,json,yml}\" --no-progress",
-		"db:seed": "node --env-file=.env scripts/seed.ts"
+		"db:seed": "node --env-file=.env scripts/seed.ts",
+		"clerk:webhook-test": "node --env-file=.env scripts/clerk-webhook-test.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -43,6 +44,7 @@
 		"prettier": "^3.8.3",
 		"prettier-plugin-svelte": "^4.1.0",
 		"prettier-plugin-tailwindcss": "^0.8.0",
+		"standardwebhooks": "^1.1.1",
 		"svelte": "^5.57.1",
 		"svelte-check": "^4.6.0",
 		"tailwindcss": "^4.3.0",
@@ -56,6 +58,7 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"dependencies": {
+		"@clerk/backend": "^3.22.0",
 		"cloudinary": "^2.11.0",
 		"svelte-clerk": "^1.2.0",
 		"zod": "^4.6.5"

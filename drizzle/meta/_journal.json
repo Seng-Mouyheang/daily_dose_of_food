@@ -15,6 +15,13 @@
       "when": 1791189196871,
       "tag": "0001_core",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791209237830,
+      "tag": "0002_user_avatar_url",
+      "breakpoints": true
     }
   ]
 }

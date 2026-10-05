@@ -11,6 +11,8 @@ export const users = pgTable(
 		email: citext('email').notNull(),
 		displayName: varchar('display_name', { length: 100 }).notNull(),
 		bio: varchar('bio', { length: 1000 }),
+		/** Clerk's hosted profile image. Takes precedence over avatarMediaId when set. */
+		avatarUrl: text('avatar_url'),
 		// FK to media_files is added in relations only, to avoid a circular table dependency
 		avatarMediaId: uuid('avatar_media_id'),
 		accountStatus: varchar('account_status', { length: 20 }).notNull().default('active'),
