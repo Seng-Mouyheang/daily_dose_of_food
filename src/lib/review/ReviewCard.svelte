@@ -1,10 +1,23 @@
 <script lang="ts">
 	import type { NestedRatingCategory } from '#lib/server/lookups.ts';
 	import Icon from '../components/Icon.svelte';
+	import { STAR_PATH } from '../components/star-path.ts';
+	import { formatVisitDate } from './format.ts';
 	import type { ReviewDraftSnapshot } from './payload.ts';
 
-	let { draft, categories }: { draft: ReviewDraftSnapshot; categories: NestedRatingCategory[] } =
-		$props();
+	let {
+		draft,
+		categories,
+		foodTypes = [],
+		drinkTypes = [],
+		user
+	}: {
+		draft: ReviewDraftSnapshot;
+		categories: NestedRatingCategory[];
+		foodTypes?: { id: number; name: string }[];
+		drinkTypes?: { id: number; name: string }[];
+		user?: { displayName: string; avatarUrl: string | null } | null;
+	} = $props();
 
 	const cover = $derived(draft.photos.find((p) => p.isCover) ?? draft.photos[0] ?? null);
 	const allRatings = $derived([
@@ -36,6 +49,17 @@
 	const itemName = $derived(draft.dish.itemName || draft.drink.itemName || 'Untitled review');
 	const placeLabel = $derived(draft.place?.name ?? (draft.newPlaceName || 'Choose a place'));
 
+	// Third meta segment: the dish's food type, or the drink's drink type — whichever item is
+	// in play. "Both" prefers the dish's type, matching how itemName above prefers the dish.
+	const itemTypeLabel = $derived.by(() => {
+		if (draft.reviewType !== 'beverage') {
+			const id = draft.dish.foodTypeIds[0];
+			return foodTypes.find((f) => f.id === id)?.name ?? null;
+		}
+		const id = draft.drink.drinkTypeId;
+		return drinkTypes.find((d) => d.id === id)?.name ?? null;
+	});
+
 	const price = $derived.by(() => {
 		const prices = [parseFloat(draft.dish.price), parseFloat(draft.drink.price)].filter(
 			Number.isFinite
@@ -48,16 +72,44 @@
 		takeaway: 'Takeaway',
 		delivery: 'Delivery'
 	};
+
+	const visibilityLabel: Record<string, string> = {
+		public: 'Public',
+		friends: 'Friends',
+		private: 'Only me'
+	};
+
+	const visibilityIcon: Record<string, 'globe' | 'users' | 'lock'> = {
+		public: 'globe',
+		friends: 'users',
+		private: 'lock'
+	};
+
+	const authorName = $derived(user?.displayName ?? 'You');
+	const authorInitial = $derived(authorName.charAt(0).toUpperCase());
 </script>
 
 <article class="overflow-hidden rounded-card border border-line bg-surface shadow-card">
-	<header class="flex items-center gap-2 px-4 pt-4">
-		<div class="h-8 w-8 rounded-full bg-sunken"></div>
-		<span class="text-sm font-semibold text-ink">You</span>
-		<span class="text-xs text-ink-3">· {placeLabel} · {visitLabel[draft.visitType]}</span>
+	<header class="flex items-center gap-2.5 px-4 pt-4">
+		{#if user?.avatarUrl}
+			<img src={user.avatarUrl} alt="" class="h-8 w-8 rounded-full object-cover" />
+		{:else}
+			<span
+				class="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-bold text-on-accent"
+			>
+				{authorInitial}
+			</span>
+		{/if}
+		<div class="min-w-0">
+			<p class="text-sm font-semibold text-ink">{authorName}</p>
+			<p class="truncate text-xs text-ink-3">
+				{placeLabel} · {visitLabel[draft.visitType]}{#if itemTypeLabel}
+					· {itemTypeLabel}{/if}
+			</p>
+		</div>
 	</header>
 
-	<div class="relative mx-4 mt-3 aspect-[16/10] overflow-hidden rounded-[12px] bg-sunken">
+	<div class="relative mt-3 aspect-16/10 overflow-hidden bg-sunken">
 		{#if cover}
 			<img src={cover.previewUrl} alt="" class="h-full w-full object-cover" />
 		{:else}
@@ -69,14 +121,25 @@
 			<span
 				class="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-bold text-ink shadow-card"
 			>
-				★ {overallRating.toFixed(1)}
+				<svg
+					width="12"
+					height="12"
+					viewBox="0 0 24 24"
+					fill="currentColor"
+					class="text-accent"
+					aria-hidden="true"
+				>
+					<path d={STAR_PATH} />
+				</svg>
+				{overallRating.toFixed(1)}
 			</span>
 		{/if}
 		{#if draft.isFavorite}
 			<span
-				class="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-fav px-2 py-1 text-xs font-bold text-white"
+				class="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-fav px-2 py-1 text-[11px] font-bold tracking-wide text-white uppercase"
 			>
-				♥ Favorite
+				<Icon name="heart" size={12} />
+				Favorite
 			</span>
 		{/if}
 		{#if draft.photos.length > 1}
@@ -99,7 +162,9 @@
 		{#if tags.length}
 			<div class="mt-2 flex flex-wrap gap-1.5">
 				{#each tags.slice(0, 4) as tag (tag)}
-					<span class="rounded-full border border-line px-2 py-0.5 text-xs text-ink-2">{tag}</span>
+					<span class="rounded-full bg-good-soft px-2 py-0.5 text-xs font-medium text-good"
+						>{tag}</span
+					>
 				{/each}
 				{#if tags.length > 4}
 					<span class="rounded-full border border-line px-2 py-0.5 text-xs text-ink-3"
@@ -114,8 +179,16 @@
 		{/if}
 	</div>
 
-	<footer class="flex items-center justify-between px-4 py-3 text-xs text-ink-3">
-		<span>{draft.visitedAt}</span>
-		<span class="capitalize">{draft.visibility}</span>
+	<footer
+		class="mt-3 flex items-center justify-between border-t border-line px-4 py-3 text-xs text-ink-3"
+	>
+		<span class="flex items-center gap-1.5">
+			<Icon name="calendar" size={14} />
+			{formatVisitDate(draft.visitedAt)}
+		</span>
+		<span class="flex items-center gap-1.5">
+			<Icon name={visibilityIcon[draft.visibility]} size={14} />
+			{visibilityLabel[draft.visibility]}
+		</span>
 	</footer>
 </article>

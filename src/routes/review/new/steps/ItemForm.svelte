@@ -2,46 +2,27 @@
 	import Field from '#lib/components/Field.svelte';
 	import TextInput from '#lib/components/TextInput.svelte';
 	import TileGroup from '#lib/components/TileGroup.svelte';
-	import CategoryRatingBlock from './CategoryRatingBlock.svelte';
-	import {
-		ensureRating,
-		findRating,
-		type ItemDraft,
-		type VisitType
-	} from '#lib/review/draft.svelte.ts';
-	import type { RatingCategoryView } from '#lib/review/categories.ts';
+	import { priceWithTax } from '#lib/review/format.ts';
+	import type { ItemDraft } from '#lib/review/draft.svelte.ts';
 
 	let {
 		item,
-		visitType,
-		category,
 		cuisineTypes,
 		foodTypes,
-		drinkTypes
+		drinkTypes,
+		invalid = false,
+		onDismiss
 	}: {
 		item: ItemDraft;
-		visitType: VisitType;
-		category?: RatingCategoryView;
 		cuisineTypes: { id: number; name: string }[];
 		foodTypes: { id: number; name: string }[];
 		drinkTypes: { id: number; name: string }[];
+		invalid?: boolean;
+		onDismiss?: () => void;
 	} = $props();
 
 	const idPrefix = $derived(`f-${item.itemType}`);
-
-	// See Step2Rating.svelte's identical comment: ensureRating mutates, so it can only run in
-	// an effect, never in a template/derived expression.
-	$effect(() => {
-		if (category) ensureRating(item.ratings, category.id);
-	});
-	const itemRating = $derived(category ? findRating(item.ratings, category.id) : null);
-
-	const withTax = $derived.by(() => {
-		const price = parseFloat(item.price.replace(',', '.'));
-		const tax = parseFloat(item.taxPercent.replace(',', '.'));
-		if (!Number.isFinite(price)) return 0;
-		return price * (1 + (Number.isFinite(tax) ? tax : 0) / 100);
-	});
+	const withTax = $derived(priceWithTax(item.price, item.taxPercent));
 
 	const SUGAR_PRESETS = [
 		[0, 'Sugar-free'],
@@ -67,12 +48,18 @@
 	}
 </script>
 
-<div class="flex flex-col gap-6 rounded-card border border-line bg-surface p-5">
+<div class="flex flex-col gap-5">
+	<h3 class="font-display text-lg font-semibold text-ink">
+		{item.itemType === 'food' ? 'The dish' : 'The drink'}
+	</h3>
+
 	<Field label={item.itemType === 'food' ? 'Dish name' : 'Drink name'} for={`${idPrefix}-name`}>
 		<TextInput
 			id={`${idPrefix}-name`}
 			placeholder={item.itemType === 'food' ? 'e.g. Fish amok' : 'e.g. Iced latte'}
 			bind:value={item.itemName}
+			oninput={() => onDismiss?.()}
+			{invalid}
 		/>
 	</Field>
 
@@ -197,9 +184,5 @@
 				{/each}
 			</div>
 		</div>
-	{/if}
-
-	{#if category && itemRating}
-		<CategoryRatingBlock {category} {visitType} rating={itemRating} />
 	{/if}
 </div>

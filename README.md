@@ -2,6 +2,8 @@
 
 SvelteKit + TypeScript, Neon (Postgres) via Drizzle, Cloudinary for images, Clerk for auth, Tailwind CSS.
 
+See [DESIGN.md](DESIGN.md) for the UI design system (tokens, components, conventions).
+
 ## Setup
 
 ```sh

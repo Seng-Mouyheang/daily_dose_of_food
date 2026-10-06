@@ -6,7 +6,11 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import type { PlaceOption, ReviewDraft } from '#lib/review/draft.svelte.ts';
 
-	let { draft }: { draft: ReviewDraft } = $props();
+	let {
+		draft,
+		invalid = false,
+		onDismiss
+	}: { draft: ReviewDraft; invalid?: boolean; onDismiss?: () => void } = $props();
 
 	let results = $state<PlaceOption[]>([]);
 	let searching = $state(false);
@@ -50,11 +54,13 @@
 		draft.placeQuery = '';
 		results = [];
 		showAddNew = false;
+		onDismiss?.();
 	}
 
 	function changePlace() {
 		draft.place = null;
 		draft.newPlaceName = '';
+		onDismiss?.();
 	}
 
 	const today = new Date().toISOString().slice(0, 10);
@@ -104,7 +110,14 @@
 	{/if}
 
 	<Field label="Date" for="f-date">
-		<TextInput id="f-date" type="date" icon="calendar" max={today} bind:value={draft.visitedAt} />
+		<TextInput
+			id="f-date"
+			type="date"
+			icon="calendar"
+			iconClass="text-accent-strong"
+			max={today}
+			bind:value={draft.visitedAt}
+		/>
 	</Field>
 
 	<Field label={draft.visitType === 'delivery' ? 'Ordered from' : 'Place'} for="f-place">
@@ -127,9 +140,14 @@
 			<TextInput
 				id="f-place"
 				icon="search"
+				iconClass="text-accent-strong"
 				placeholder="Search restaurants, cafés, stalls"
 				bind:value={draft.placeQuery}
-				oninput={() => scheduleSearch(draft.placeQuery)}
+				oninput={() => {
+					scheduleSearch(draft.placeQuery);
+					onDismiss?.();
+				}}
+				{invalid}
 			/>
 			{#if searching}
 				<p class="text-[13px] text-ink-3">Searching…</p>
@@ -160,7 +178,12 @@
 						No places match "{draft.placeQuery}" — check the spelling, or add it as a new place.
 					</p>
 					<div class="mt-2">
-						<TextInput placeholder="Place name" bind:value={draft.newPlaceName} />
+						<TextInput
+							placeholder="Place name"
+							bind:value={draft.newPlaceName}
+							oninput={() => onDismiss?.()}
+							{invalid}
+						/>
 					</div>
 				</div>
 			{:else if searchError}

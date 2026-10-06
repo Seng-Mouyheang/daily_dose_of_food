@@ -20,6 +20,12 @@
 					? 'border-good bg-good-soft text-good'
 					: 'border-bad bg-bad-soft text-bad'
 	);
+
+	// Selected pos/neg tags are prefixed with their sign (+ Delicious / − Too expensive),
+	// matching the mockups; unselected and neutral/add chips show the bare label.
+	const sign = $derived(
+		selected && variant === 'pos' ? '+ ' : selected && variant === 'neg' ? '− ' : ''
+	);
 </script>
 
 <button
@@ -28,5 +34,5 @@
 	aria-pressed={variant === 'add' ? undefined : selected}
 	{onclick}
 >
-	{label}
+	{sign}{label}
 </button>

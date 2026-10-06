@@ -13,16 +13,20 @@
 		class?: string;
 	} & Omit<HTMLButtonAttributes, 'class'> = $props();
 
+	// `accent-strong` is the *text* accent (see DESIGN.md) — in dark mode it's lighter than
+	// `accent`, not darker, so using it as a hover fill would brighten the button instead of
+	// darkening it and wash out light button text. A brightness filter darkens correctly in
+	// both themes without repurposing that token.
 	const variantClass = $derived(
 		variant === 'primary'
-			? 'bg-accent text-on-accent hover:bg-accent-strong'
-			: 'bg-transparent text-ink-2 hover:bg-sunken'
+			? 'bg-accent text-on-accent transition-[filter] hover:brightness-90'
+			: 'bg-transparent text-ink-2 transition-colors hover:bg-sunken'
 	);
 </script>
 
 <button
 	type="button"
-	class={`inline-flex h-[50px] min-w-[44px] items-center justify-center gap-2 rounded-input px-5 text-[15.5px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClass} ${extraClass}`}
+	class={`inline-flex h-[50px] min-w-[44px] items-center justify-center gap-2 rounded-input px-5 text-[15.5px] font-bold disabled:cursor-not-allowed disabled:opacity-50 ${variantClass} ${extraClass}`}
 	{...rest}
 >
 	{@render children()}

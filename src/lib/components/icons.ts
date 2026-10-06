@@ -3,6 +3,8 @@
  *  .svelte file per icon — these are rendered through Icon.svelte's {@html}, which is safe
  *  here because every entry is a fixed, developer-authored constant, never user input. */
 export const ICONS = {
+	/** Brand mark: concentric rings, rendered on-accent in the header logo tile. */
+	logo: '<circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3"/>',
 	chevL: '<path d="M15 18l-6-6 6-6"/>',
 	chevR: '<path d="M9 18l6-6-6-6"/>',
 	chevD: '<path d="M6 9l6 6 6-6"/>',
@@ -37,7 +39,8 @@ export const ICONS = {
 	pencil: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>',
 	bellN: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 	cloud:
-		'<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5H7z"/><path d="M9.5 13.5l2 2 3.5-3.5"/>'
+		'<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5H7z"/><path d="M9.5 13.5l2 2 3.5-3.5"/>',
+	info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.8" r=".2" fill="currentColor" stroke-width="2.4"/>'
 } as const;
 
 export type IconName = keyof typeof ICONS;

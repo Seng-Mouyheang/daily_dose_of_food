@@ -25,19 +25,12 @@
 		{@const selected = value === opt.value}
 		<button
 			type="button"
-			class={`relative flex min-h-[44px] flex-col items-center gap-1 rounded-tile border px-3 py-3 text-center transition-colors ${
+			class={`flex min-h-11 flex-col items-center gap-1 rounded-tile border px-3 py-3 text-center transition-colors ${
 				selected ? 'border-accent bg-accent-soft' : 'border-line bg-surface'
 			}`}
 			aria-pressed={selected}
 			onclick={() => (value = opt.value)}
 		>
-			{#if selected}
-				<span
-					class="absolute top-1.5 right-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-accent text-on-accent"
-				>
-					<Icon name="check" size={12} weight={2.5} />
-				</span>
-			{/if}
 			{#if opt.icon}
 				<Icon
 					name={opt.icon}

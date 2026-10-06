@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { STAR_PATH } from './star-path.ts';
+
 	let {
 		value = $bindable(),
 		max = 5,
@@ -24,9 +26,7 @@
 			onclick={() => setValue(n)}
 		>
 			<svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-				<path
-					d="M12 2.6l2.85 6 6.55.78-4.85 4.5 1.3 6.5L12 17.1l-5.85 3.28 1.3-6.5L2.6 9.38l6.55-.78z"
-				/>
+				<path d={STAR_PATH} />
 			</svg>
 		</button>
 	{/each}
