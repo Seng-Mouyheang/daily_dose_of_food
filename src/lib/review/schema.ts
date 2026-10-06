@@ -102,8 +102,10 @@ export const publishReviewSchema = z
 		 *  item's own isFavorite/isLeastFavorite, which marks the best/worst dish in a multi-item order. */
 		isFavorite: z.boolean().default(false),
 		items: z.array(reviewItemSchema).min(1).max(2),
-		/** Place-scoped ratings — Price, Service, Hygiene, Amenities. reviewItemId is null for these. */
-		placeRatings: z.array(categoryRatingSchema).min(1).max(6),
+		/** Place-scoped ratings — Price, Service, Hygiene, Amenities. reviewItemId is null for
+		 *  these. No minimum: the prototype's own validate() never requires a rating to
+		 *  publish, only a place and an item name. */
+		placeRatings: z.array(categoryRatingSchema).max(6),
 		photos: z.array(reviewPhotoSchema).max(10)
 	})
 	.superRefine((v, ctx) => {

@@ -7,7 +7,11 @@ import { publishReviewSchema } from '#lib/review/schema.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	await requireUser(locals);
+	// A plain redirect, not requireUser's 401 — this page is now reachable from the header
+	// nav for anyone, so a signed-out visitor should land on sign-in, not an error page.
+	// (The publish action below still uses requireUser: a POST with no session is a real
+	// failure, not a navigation to redirect.)
+	if (!locals.auth().userId) redirect(303, '/sign-in');
 	return { lookups: await getReviewFormLookups() };
 };
 

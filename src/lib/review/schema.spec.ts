@@ -76,6 +76,11 @@ describe('publishReviewSchema', () => {
 		expect(publishReviewSchema.safeParse(payload()).success).toBe(true);
 	});
 
+	it('accepts a review with no ratings at all (only a place and an item name are required)', () => {
+		const result = publishReviewSchema.safeParse(payload({ placeRatings: [] }));
+		expect(result.success).toBe(true);
+	});
+
 	it('rejects a non-null mealType on a drink-only review', () => {
 		const result = publishReviewSchema.safeParse(
 			payload({ reviewType: 'drink', mealType: 'lunch', items: [drinkItem()] })

@@ -24,6 +24,7 @@
 		"clerk:webhook-test": "node --env-file=.env scripts/clerk-webhook-test.ts"
 	},
 	"devDependencies": {
+		"@clerk/testing": "^2.2.42",
 		"@eslint/js": "^10.0.1",
 		"@neondatabase/serverless": "^1.1.0",
 		"@playwright/test": "^1.60.0",
