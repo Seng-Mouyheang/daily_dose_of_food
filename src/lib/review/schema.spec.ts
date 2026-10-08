@@ -17,7 +17,9 @@ function foodItem(overrides: Partial<Omit<FoodItem, 'itemType'>> = {}): FoodItem
 		isLeastFavorite: false,
 		ratings: [],
 		cuisineTypeId: null,
+		cuisineTypeOther: null,
 		foodTypeIds: [],
+		foodTypeOther: null,
 		portionSize: null,
 		tasteNotes: null,
 		...overrides
@@ -37,6 +39,7 @@ function drinkItem(overrides: Partial<Omit<DrinkItem, 'itemType'>> = {}): DrinkI
 		isLeastFavorite: false,
 		ratings: [],
 		drinkTypeId: null,
+		drinkTypeOther: null,
 		sizeLabel: null,
 		sugarLevelPercent: null,
 		iceLevel: null,
@@ -63,6 +66,7 @@ function payload(overrides: Partial<PublishReview> = {}): PublishReview {
 				ratingValue: 4,
 				isApplicable: true,
 				criteriaOptionIds: [],
+				customCriteria: [],
 				comment: null
 			}
 		],
@@ -157,6 +161,7 @@ describe('publishReviewSchema', () => {
 						ratingValue: 4,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					},
 					{
@@ -164,6 +169,7 @@ describe('publishReviewSchema', () => {
 						ratingValue: 2,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					}
 				]
@@ -199,6 +205,7 @@ describe('publishReviewSchema', () => {
 						ratingValue: 3.3,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					}
 				]

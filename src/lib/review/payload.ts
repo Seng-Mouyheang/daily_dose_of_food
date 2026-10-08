@@ -51,12 +51,19 @@ function nullIfBlank(s: string): string | null {
  *  entry for every seeded category doesn't get sent as a wall of meaningless rows. */
 function usedRatings(ratings: CategoryRatingDraft[]): PublishReview['placeRatings'] {
 	return ratings
-		.filter((r) => r.ratingValue !== null || r.criteriaOptionIds.length > 0 || r.comment)
+		.filter(
+			(r) =>
+				r.ratingValue !== null ||
+				r.criteriaOptionIds.length > 0 ||
+				r.customCriteria.length > 0 ||
+				r.comment
+		)
 		.map((r) => ({
 			ratingCategoryId: r.ratingCategoryId,
 			ratingValue: r.ratingValue,
 			isApplicable: true,
 			criteriaOptionIds: r.criteriaOptionIds,
+			customCriteria: r.customCriteria,
 			comment: r.comment
 		}));
 }
@@ -78,7 +85,9 @@ function toItemInput(item: ItemDraft): ReviewItemInput {
 			...shared,
 			itemType: 'food',
 			cuisineTypeId: item.cuisineTypeId,
+			cuisineTypeOther: nullIfBlank(item.cuisineTypeOther ?? ''),
 			foodTypeIds: item.foodTypeIds,
+			foodTypeOther: nullIfBlank(item.foodTypeOther ?? ''),
 			portionSize: item.portionSize,
 			tasteNotes: nullIfBlank(item.tasteNotes ?? '')
 		};
@@ -87,6 +96,7 @@ function toItemInput(item: ItemDraft): ReviewItemInput {
 		...shared,
 		itemType: 'drink',
 		drinkTypeId: item.drinkTypeId,
+		drinkTypeOther: nullIfBlank(item.drinkTypeOther ?? ''),
 		sizeLabel: nullIfBlank(item.sizeLabel),
 		sugarLevelPercent: item.sugarLevelPercent,
 		iceLevel: item.iceLevel

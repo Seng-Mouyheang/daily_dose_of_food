@@ -19,8 +19,8 @@
 	onclick={() => (checked = !checked)}
 >
 	<span
-		class={`absolute top-1 h-5 w-5 rounded-full bg-surface shadow-card transition-transform ${
-			checked ? 'translate-x-[22px]' : 'translate-x-1'
+		class={`absolute top-1 left-1 h-5 w-5 rounded-full bg-surface shadow-card transition-transform ${
+			checked ? 'translate-x-5' : ''
 		}`}
 	></span>
 </button>

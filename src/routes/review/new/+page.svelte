@@ -61,10 +61,10 @@
 		}
 		if (step === 2) {
 			if (draft.hasDish && !draft.dish.itemName.trim()) {
-				return 'Add a name so you can find this in your journal later.';
+				return 'Please enter the name of the dish or drink.';
 			}
 			if (draft.hasBev && !draft.drink.itemName.trim()) {
-				return 'Add a name so you can find this in your journal later.';
+				return 'Please enter the name of the dish or drink.';
 			}
 		}
 		return null;
@@ -275,7 +275,7 @@
 			</div>
 
 			<div
-				class="sticky bottom-0 flex gap-3 border-t border-line bg-surface px-4 py-3 lg:gap-5 lg:px-10"
+				class="sticky bottom-0 flex gap-3 border-t border-line bg-surface px-4 py-3 lg:gap-5 lg:pr-10 lg:pl-6"
 			>
 				{#if draft.step > 1}
 					<Button variant="ghost" onclick={() => (draft.step -= 1)}>

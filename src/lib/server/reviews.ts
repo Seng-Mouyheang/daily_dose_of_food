@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { inArray, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
-import type { PublishReview, ReviewItemInput } from '../review/schema.ts';
+import type { CategoryRatingInput, PublishReview, ReviewItemInput } from '../review/schema.ts';
 import { cloudinary, cloudinarySignatureValid, publicIdBelongsToUser } from './cloudinary.ts';
 import { db } from './db/index.ts';
+import { findOrCreateCriteriaOption, findOrCreateLookupEntry } from './lookups.ts';
 import {
 	drinkItemDetails,
 	foodItemDetails,
@@ -338,6 +339,55 @@ async function findExistingMediaIds(publicIds: string[]): Promise<Map<string, st
 	return new Map(rows.map((r) => [r.storageKey, r.id]));
 }
 
+/** Resolves a rating's "+"-added custom tags into real rating_criteria_options rows, creating
+ *  one if it doesn't exist yet — see findOrCreateCriteriaOption. Done here, right before the
+ *  review is actually written, so a half-typed custom tag only ever becomes a permanent
+ *  criteria option once the publish itself succeeds. */
+async function resolveRatingCustomCriteria(
+	rating: CategoryRatingInput
+): Promise<CategoryRatingInput> {
+	if (rating.customCriteria.length === 0) return rating;
+	const resolved = await Promise.all(
+		rating.customCriteria.map((c) =>
+			findOrCreateCriteriaOption(rating.ratingCategoryId, c.sentiment, c.label)
+		)
+	);
+	return {
+		...rating,
+		criteriaOptionIds: [...new Set([...rating.criteriaOptionIds, ...resolved.map((r) => r.id)])],
+		customCriteria: []
+	};
+}
+
+/** Resolves any "Other…" lookup names typed into the wizard (cuisine / food / drink type)
+ *  into real rows, creating one if it doesn't exist yet — see findOrCreateLookupEntry. Also
+ *  resolves each item-scoped rating's custom criteria (see resolveRatingCustomCriteria). Done
+ *  here, right before the review is actually written, so a half-typed custom entry only ever
+ *  becomes a permanent row once the publish itself succeeds. */
+function resolveItemLookupOthers(items: ReviewItemInput[]): Promise<ReviewItemInput[]> {
+	return Promise.all(
+		items.map(async (item) => {
+			const ratings = await Promise.all(item.ratings.map(resolveRatingCustomCriteria));
+			if (item.itemType === 'food') {
+				const [cuisine, foodType] = await Promise.all([
+					item.cuisineTypeOther ? findOrCreateLookupEntry('cuisine', item.cuisineTypeOther) : null,
+					item.foodTypeOther ? findOrCreateLookupEntry('food', item.foodTypeOther) : null
+				]);
+				return {
+					...item,
+					ratings,
+					cuisineTypeId: cuisine ? cuisine.id : item.cuisineTypeId,
+					foodTypeIds: foodType ? [...item.foodTypeIds, foodType.id] : item.foodTypeIds
+				};
+			}
+			const drinkType = item.drinkTypeOther
+				? await findOrCreateLookupEntry('drink', item.drinkTypeOther)
+				: null;
+			return { ...item, ratings, drinkTypeId: drinkType ? drinkType.id : item.drinkTypeId };
+		})
+	);
+}
+
 /** Validates, builds, and atomically writes a full review. See buildReviewRows for the pure
  *  half of this; this function only does I/O (the pre-flight read and the batch itself). */
 export async function publishReview(
@@ -351,9 +401,15 @@ export async function publishReview(
 		}
 	}
 
-	const mediaIdByPublicId = await findExistingMediaIds(input.photos.map((p) => p.publicId));
+	const resolvedInput: PublishReview = {
+		...input,
+		items: (await resolveItemLookupOthers(input.items)) as PublishReview['items'],
+		placeRatings: await Promise.all(input.placeRatings.map(resolveRatingCustomCriteria))
+	};
 
-	const rows = buildReviewRows(input, {
+	const mediaIdByPublicId = await findExistingMediaIds(resolvedInput.photos.map((p) => p.publicId));
+
+	const rows = buildReviewRows(resolvedInput, {
 		userId,
 		now: new Date(),
 		categories,

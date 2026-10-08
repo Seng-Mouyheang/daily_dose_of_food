@@ -24,11 +24,20 @@ export const placeRefSchema = z.discriminatedUnion('kind', [
 	})
 ]);
 
+/** A typed-but-not-yet-real tag from a tag group's "+" add pill — see customCriteria on
+ *  CategoryRatingDraft. Resolved to a real rating_criteria_options row (new or reused) during
+ *  publish — see findOrCreateCriteriaOption. */
+const customCriteriaEntry = z.object({
+	label: z.string().trim().min(1).max(150),
+	sentiment: z.enum(['positive', 'negative'])
+});
+
 export const categoryRatingSchema = z.object({
 	ratingCategoryId: z.number().int().positive(),
 	ratingValue: starRating.nullable(),
 	isApplicable: z.boolean().default(true),
 	criteriaOptionIds: z.array(z.number().int().positive()).max(12).default([]),
+	customCriteria: z.array(customCriteriaEntry).max(12).default([]),
 	comment: z.string().max(500).nullable().default(null)
 });
 
@@ -48,12 +57,19 @@ const baseItemFields = {
 const itemPreferenceRefine = (i: { isFavorite: boolean; isLeastFavorite: boolean }) =>
 	!(i.isFavorite && i.isLeastFavorite);
 
+/** A typed-but-not-yet-real lookup name from a Select's "Other…" field — see
+ *  cuisineTypeOther on ItemDraft. Mutually exclusive with the matching *TypeId(s) field;
+ *  resolved to a real row (new or reused) during publish — see findOrCreateLookupEntry. */
+const otherLookupName = z.string().trim().min(1).max(100).nullable().default(null);
+
 export const foodItemSchema = z
 	.object({
 		...baseItemFields,
 		itemType: z.literal('food'),
 		cuisineTypeId: z.number().int().positive().nullable().default(null),
+		cuisineTypeOther: otherLookupName,
 		foodTypeIds: z.array(z.number().int().positive()).max(8).default([]),
+		foodTypeOther: otherLookupName,
 		portionSize: z.enum(['small', 'regular', 'large']).nullable().default(null),
 		tasteNotes: z.string().max(200).nullable().default(null)
 	})
@@ -64,6 +80,7 @@ export const drinkItemSchema = z
 		...baseItemFields,
 		itemType: z.literal('drink'),
 		drinkTypeId: z.number().int().positive().nullable().default(null),
+		drinkTypeOther: otherLookupName,
 		sizeLabel: z.string().max(30).nullable().default(null),
 		sugarLevelPercent: z.number().int().min(0).max(200).nullable().default(null),
 		iceLevel: z.string().max(30).nullable().default(null)

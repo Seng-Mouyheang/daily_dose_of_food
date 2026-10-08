@@ -18,6 +18,11 @@ export interface CategoryRatingDraft {
 	ratingCategoryId: number;
 	ratingValue: number | null;
 	criteriaOptionIds: number[];
+	/** Tags typed into a tag group's "+" add pill, not yet a real `rating_criteria_options` row
+	 *  — unlike criteriaOptionIds (seeded option ids), these are plain labels. Resolved to a
+	 *  real row (reused if one with this label already exists for the category) only when the
+	 *  review is published; see findOrCreateCriteriaOption in src/lib/server/lookups.ts. */
+	customCriteria: { label: string; sentiment: 'positive' | 'negative' }[];
 	comment: string | null;
 }
 
@@ -36,11 +41,18 @@ export interface ItemDraft {
 	ratings: CategoryRatingDraft[];
 	// food-only
 	cuisineTypeId: number | null;
+	/** A custom cuisine typed into the Cuisine select's "Other…" field, not yet a real lookup
+	 *  row — mutually exclusive with cuisineTypeId. Resolved to a real row (reused if one with
+	 *  this name already exists) only when the review is published; see
+	 *  findOrCreateLookupEntry in src/lib/server/lookups.ts. */
+	cuisineTypeOther: string | null;
 	foodTypeIds: number[];
+	foodTypeOther: string | null;
 	portionSize: 'small' | 'regular' | 'large' | null;
 	tasteNotes: string | null;
 	// drink-only
 	drinkTypeId: number | null;
+	drinkTypeOther: string | null;
 	/** '' means unset — kept as a plain string so TileGroup's `T extends string` is satisfied;
 	 *  payload.ts maps '' back to null for the schema. */
 	sizeLabel: string;
@@ -76,12 +88,15 @@ function emptyItem(itemType: 'food' | 'drink'): ItemDraft {
 		isLeastFavorite: false,
 		ratings: [],
 		cuisineTypeId: null,
+		cuisineTypeOther: null,
 		foodTypeIds: [],
+		foodTypeOther: null,
 		portionSize: null,
 		tasteNotes: null,
 		drinkTypeId: null,
+		drinkTypeOther: null,
 		sizeLabel: '',
-		sugarLevelPercent: 50,
+		sugarLevelPercent: 100,
 		iceLevel: null
 	};
 }
@@ -100,7 +115,13 @@ export function ensureRating(
 ): CategoryRatingDraft {
 	let rating = list.find((r) => r.ratingCategoryId === ratingCategoryId);
 	if (!rating) {
-		rating = { ratingCategoryId, ratingValue: null, criteriaOptionIds: [], comment: null };
+		rating = {
+			ratingCategoryId,
+			ratingValue: null,
+			criteriaOptionIds: [],
+			customCriteria: [],
+			comment: null
+		};
 		list.push(rating);
 	}
 	return rating;
@@ -119,6 +140,7 @@ export function findRating(
 			ratingCategoryId,
 			ratingValue: null,
 			criteriaOptionIds: [],
+			customCriteria: [],
 			comment: null
 		}
 	);
@@ -215,7 +237,16 @@ export class ReviewDraft {
 	restoreFromLocalStorage() {
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
-			if (raw) Object.assign(this, JSON.parse(raw));
+			if (!raw) return;
+			const parsed = JSON.parse(raw);
+			// A draft saved before `customCriteria` existed on CategoryRatingDraft won't have it on
+			// any of its rating entries — back-fill it so usedRatings (payload.ts) doesn't crash
+			// reading .length off undefined. ensureRating/findRating always set it for anything
+			// created fresh; this is only needed for ratings restored straight from old JSON.
+			for (const ratings of [parsed.dish?.ratings, parsed.drink?.ratings, parsed.placeRatings]) {
+				for (const r of ratings ?? []) r.customCriteria ??= [];
+			}
+			Object.assign(this, parsed);
 		} catch {
 			// Corrupt or inaccessible storage: start fresh rather than throw.
 		}

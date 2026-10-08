@@ -2,6 +2,8 @@
 	import Field from '#lib/components/Field.svelte';
 	import TextInput from '#lib/components/TextInput.svelte';
 	import TileGroup from '#lib/components/TileGroup.svelte';
+	import Select from '#lib/components/Select.svelte';
+	import Slider from '#lib/components/Slider.svelte';
 	import { priceWithTax } from '#lib/review/format.ts';
 	import type { ItemDraft } from '#lib/review/draft.svelte.ts';
 
@@ -26,10 +28,12 @@
 
 	const SUGAR_PRESETS = [
 		[0, 'Sugar-free'],
-		[25, 'Less sweet'],
-		[50, 'Regular'],
-		[75, 'Sweet'],
-		[100, 'Extra sweet']
+		[25, 'Barely sweet'],
+		[50, 'Less sweet'],
+		[75, 'Mild'],
+		[100, 'Regular'],
+		[125, 'Sweet'],
+		[150, 'Extra sweet']
 	] as const;
 
 	function sugarWord(pct: number): string {
@@ -38,13 +42,6 @@
 			if (Math.abs(preset[0] - pct) < Math.abs(closest[0] - pct)) closest = preset;
 		}
 		return closest[1];
-	}
-
-	// A single selected food type, stored as the 0-or-1-element array the schema's
-	// many-to-many review_item_food_types expects.
-	let selectedFoodTypeId = $derived(item.foodTypeIds[0] ?? '');
-	function setFoodType(id: string) {
-		item.foodTypeIds = id ? [Number(id)] : [];
 	}
 </script>
 
@@ -64,49 +61,40 @@
 	</Field>
 
 	{#if item.itemType === 'food'}
-		<div class="grid grid-cols-2 gap-3">
+		<div class="flex flex-col gap-5">
 			<Field label="Cuisine" for={`${idPrefix}-cuisine`}>
-				<select
+				<Select
 					id={`${idPrefix}-cuisine`}
-					class="h-12 rounded-input border border-line bg-surface px-3.5 text-[15px] text-ink"
-					value={item.cuisineTypeId ?? ''}
-					onchange={(e) =>
-						(item.cuisineTypeId = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-				>
-					<option value="">Select</option>
-					{#each cuisineTypes as c (c.id)}
-						<option value={c.id}>{c.name}</option>
-					{/each}
-				</select>
+					groupLabel="Cuisine"
+					bind:value={item.cuisineTypeId}
+					bind:otherValue={item.cuisineTypeOther}
+					options={cuisineTypes.map((c) => ({ value: c.id, label: c.name }))}
+					allowOther
+				/>
 			</Field>
 			<Field label="Type of dish" for={`${idPrefix}-foodtype`}>
-				<select
+				<Select
 					id={`${idPrefix}-foodtype`}
-					class="h-12 rounded-input border border-line bg-surface px-3.5 text-[15px] text-ink"
-					value={selectedFoodTypeId}
-					onchange={(e) => setFoodType(e.currentTarget.value)}
-				>
-					<option value="">Select</option>
-					{#each foodTypes as f (f.id)}
-						<option value={f.id}>{f.name}</option>
-					{/each}
-				</select>
+					groupLabel="Type of dish"
+					bind:value={
+						() => item.foodTypeIds[0] ?? null, (v) => (item.foodTypeIds = v === null ? [] : [v])
+					}
+					bind:otherValue={item.foodTypeOther}
+					options={foodTypes.map((f) => ({ value: f.id, label: f.name }))}
+					allowOther
+				/>
 			</Field>
 		</div>
 	{:else}
 		<Field label="Type of drink" for={`${idPrefix}-drinktype`}>
-			<select
+			<Select
 				id={`${idPrefix}-drinktype`}
-				class="h-12 rounded-input border border-line bg-surface px-3.5 text-[15px] text-ink"
-				value={item.drinkTypeId ?? ''}
-				onchange={(e) =>
-					(item.drinkTypeId = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-			>
-				<option value="">Select</option>
-				{#each drinkTypes as d (d.id)}
-					<option value={d.id}>{d.name}</option>
-				{/each}
-			</select>
+				groupLabel="Type of drink"
+				bind:value={item.drinkTypeId}
+				bind:otherValue={item.drinkTypeOther}
+				options={drinkTypes.map((d) => ({ value: d.id, label: d.name }))}
+				allowOther
+			/>
 		</Field>
 	{/if}
 
@@ -155,20 +143,17 @@
 			<div class="flex items-center justify-between">
 				<span class="text-sm font-semibold text-ink">Sweetness</span>
 				<span class="text-sm text-ink-3"
-					>{sugarWord(item.sugarLevelPercent ?? 50)} ({item.sugarLevelPercent ?? 50}% sugar)</span
+					>{sugarWord(item.sugarLevelPercent ?? 100)} ({item.sugarLevelPercent ?? 100}% sugar)</span
 				>
 			</div>
-			<input
-				type="range"
-				min="0"
-				max="100"
-				step="5"
-				class="accent-accent"
-				value={item.sugarLevelPercent ?? 50}
-				oninput={(e) => (item.sugarLevelPercent = Number(e.currentTarget.value))}
-				aria-label="Sweetness"
+			<Slider
+				min={0}
+				max={150}
+				step={5}
+				label="Sweetness"
+				bind:value={() => item.sugarLevelPercent ?? 100, (v) => (item.sugarLevelPercent = v)}
 			/>
-			<div class="flex flex-wrap gap-1.5">
+			<div class="flex flex-wrap justify-center gap-1.5">
 				{#each SUGAR_PRESETS as [pct, presetLabel] (pct)}
 					<button
 						type="button"

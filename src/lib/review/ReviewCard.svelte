@@ -119,7 +119,7 @@
 		{/if}
 		{#if overallRating !== null}
 			<span
-				class="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs font-bold text-ink shadow-card"
+				class="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-surface/90 px-2 py-1 text-xs font-bold text-ink shadow-card"
 			>
 				<svg
 					width="12"

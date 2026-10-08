@@ -1,5 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
+import { slugify } from '../../../scripts/seed-data.ts';
 import { db } from './db/index.ts';
 import {
 	cuisineTypes,
@@ -70,4 +71,92 @@ export async function getReviewFormLookups() {
 		drinkTypes: drink,
 		placeCategories: placeCats
 	};
+}
+
+const LOOKUP_TABLES = { cuisine: cuisineTypes, food: foodTypes, drink: drinkTypes } as const;
+export type LookupKind = keyof typeof LOOKUP_TABLES;
+
+export interface LookupEntry {
+	id: number;
+	name: string;
+}
+
+/**
+ * Resolves a user-typed "Other" value (cuisine, dish type, or drink type) to a real lookup
+ * row, creating one if no match exists yet — the wizard's `Select` then treats it exactly
+ * like any seeded option from then on. Dedupes on `slug`, not the raw `name`, so "Pizza" /
+ * "pizza" / "  Pizza  " all resolve to the same row, matching the table's own unique index on
+ * slug. If a concurrent request creates the same slug first, `onConflictDoNothing` simply
+ * loses that race and the follow-up select picks up the row it created instead — no error,
+ * no duplicate.
+ */
+export async function findOrCreateLookupEntry(
+	kind: LookupKind,
+	rawName: string
+): Promise<LookupEntry> {
+	const name = rawName.trim().slice(0, 100);
+	const slug = slugify(name);
+	if (!name || !slug) {
+		throw new Error('A name is required.');
+	}
+
+	const table = LOOKUP_TABLES[kind];
+	const [inserted] = await db
+		.insert(table)
+		.values({ name, slug })
+		.onConflictDoNothing({ target: table.slug })
+		.returning({ id: table.id, name: table.name });
+	if (inserted) return inserted;
+
+	const [existing] = await db
+		.select({ id: table.id, name: table.name })
+		.from(table)
+		.where(eq(table.slug, slug))
+		.limit(1);
+	if (!existing) throw new Error('Could not resolve this option. Try again.');
+	return existing;
+}
+
+export interface CriteriaOptionEntry {
+	id: number;
+	label: string;
+}
+
+/**
+ * Resolves a user-typed tag (from a rating category's "+" add pill) to a real
+ * rating_criteria_options row, creating one if no match exists yet. Mirrors
+ * findOrCreateLookupEntry above, but dedupes on the table's own unique constraint —
+ * (ratingCategoryId, label) — since this table has no slug column of its own.
+ */
+export async function findOrCreateCriteriaOption(
+	ratingCategoryId: number,
+	sentiment: 'positive' | 'negative',
+	rawLabel: string
+): Promise<CriteriaOptionEntry> {
+	const label = rawLabel.trim().slice(0, 150);
+	if (!label) {
+		throw new Error('A label is required.');
+	}
+
+	const [inserted] = await db
+		.insert(ratingCriteriaOptions)
+		.values({ ratingCategoryId, label, sentiment })
+		.onConflictDoNothing({
+			target: [ratingCriteriaOptions.ratingCategoryId, ratingCriteriaOptions.label]
+		})
+		.returning({ id: ratingCriteriaOptions.id, label: ratingCriteriaOptions.label });
+	if (inserted) return inserted;
+
+	const [existing] = await db
+		.select({ id: ratingCriteriaOptions.id, label: ratingCriteriaOptions.label })
+		.from(ratingCriteriaOptions)
+		.where(
+			and(
+				eq(ratingCriteriaOptions.ratingCategoryId, ratingCategoryId),
+				eq(ratingCriteriaOptions.label, label)
+			)
+		)
+		.limit(1);
+	if (!existing) throw new Error('Could not resolve this tag. Try again.');
+	return existing;
 }

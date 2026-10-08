@@ -88,11 +88,14 @@ function basePayload(overrides: Partial<PublishReview> = {}): PublishReview {
 						ratingValue: 4.5,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					}
 				],
 				cuisineTypeId: null,
+				cuisineTypeOther: null,
 				foodTypeIds: [],
+				foodTypeOther: null,
 				portionSize: null,
 				tasteNotes: null
 			}
@@ -103,6 +106,7 @@ function basePayload(overrides: Partial<PublishReview> = {}): PublishReview {
 				ratingValue: 4,
 				isApplicable: true,
 				criteriaOptionIds: [],
+				customCriteria: [],
 				comment: null
 			}
 		],
@@ -182,6 +186,7 @@ describe('buildReviewRows', () => {
 								ratingValue: 5,
 								isApplicable: true,
 								criteriaOptionIds: [],
+								customCriteria: [],
 								comment: null
 							}
 						]
@@ -193,6 +198,7 @@ describe('buildReviewRows', () => {
 						ratingValue: 3,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					},
 					// Ignored: isApplicable false must not pull the average down.
@@ -201,6 +207,7 @@ describe('buildReviewRows', () => {
 						ratingValue: 1,
 						isApplicable: false,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					}
 				]
@@ -221,6 +228,7 @@ describe('buildReviewRows', () => {
 						ratingValue: 4,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					},
 					{
@@ -228,6 +236,7 @@ describe('buildReviewRows', () => {
 						ratingValue: 5,
 						isApplicable: true,
 						criteriaOptionIds: [],
+						customCriteria: [],
 						comment: null
 					}
 				]
@@ -256,6 +265,7 @@ describe('buildReviewRows', () => {
 						isLeastFavorite: false,
 						ratings: [],
 						drinkTypeId: null,
+						drinkTypeOther: null,
 						sizeLabel: null,
 						sugarLevelPercent: null,
 						iceLevel: null
@@ -287,6 +297,7 @@ describe('buildReviewRows', () => {
 						isLeastFavorite: false,
 						ratings: [],
 						drinkTypeId: null,
+						drinkTypeOther: null,
 						sizeLabel: null,
 						sugarLevelPercent: null,
 						iceLevel: null

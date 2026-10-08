@@ -1,13 +1,20 @@
 <script lang="ts">
+	import Icon from './Icon.svelte';
+	import type { IconName } from './icons.ts';
+
 	let {
 		label,
 		variant = 'neutral',
 		selected = false,
+		icon,
 		onclick
 	}: {
 		label: string;
 		variant?: 'pos' | 'neg' | 'add' | 'neutral';
 		selected?: boolean;
+		/** Renders as an icon-only circular pill (`label` becomes its aria-label) instead of
+		 *  text — e.g. a "+" add-tag trigger. */
+		icon?: IconName;
 		onclick?: () => void;
 	} = $props();
 
@@ -30,9 +37,14 @@
 
 <button
 	type="button"
-	class={`inline-flex h-[30px] items-center rounded-full border px-3 text-sm font-medium transition-colors ${toneClass}`}
-	aria-pressed={variant === 'add' ? undefined : selected}
+	class={`inline-flex h-[30px] items-center justify-center rounded-full border font-medium transition-colors ${icon ? 'w-[30px]' : 'px-3 text-sm'} ${toneClass}`}
+	aria-pressed={variant === 'add' || icon ? undefined : selected}
+	aria-label={icon ? label : undefined}
 	{onclick}
 >
-	{sign}{label}
+	{#if icon}
+		<Icon name={icon} size={14} weight={2.5} />
+	{:else}
+		{sign}{label}
+	{/if}
 </button>

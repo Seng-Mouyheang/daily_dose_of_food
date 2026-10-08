@@ -19,10 +19,13 @@ function emptyItem(itemType: 'food' | 'drink'): ItemDraft {
 		isLeastFavorite: false,
 		ratings: [],
 		cuisineTypeId: null,
+		cuisineTypeOther: null,
 		foodTypeIds: [],
+		foodTypeOther: null,
 		portionSize: null,
 		tasteNotes: null,
 		drinkTypeId: null,
+		drinkTypeOther: null,
 		sizeLabel: '',
 		sugarLevelPercent: 50,
 		iceLevel: null
@@ -100,8 +103,20 @@ describe('buildPublishPayload', () => {
 		const payload = buildPublishPayload(
 			snapshot({
 				placeRatings: [
-					{ ratingCategoryId: 3, ratingValue: null, criteriaOptionIds: [], comment: null },
-					{ ratingCategoryId: 4, ratingValue: 4, criteriaOptionIds: [], comment: null }
+					{
+						ratingCategoryId: 3,
+						ratingValue: null,
+						criteriaOptionIds: [],
+						customCriteria: [],
+						comment: null
+					},
+					{
+						ratingCategoryId: 4,
+						ratingValue: 4,
+						criteriaOptionIds: [],
+						customCriteria: [],
+						comment: null
+					}
 				]
 			})
 		);
@@ -112,7 +127,13 @@ describe('buildPublishPayload', () => {
 		const payload = buildPublishPayload(
 			snapshot({
 				placeRatings: [
-					{ ratingCategoryId: 3, ratingValue: null, criteriaOptionIds: [12], comment: null }
+					{
+						ratingCategoryId: 3,
+						ratingValue: null,
+						criteriaOptionIds: [12],
+						customCriteria: [],
+						comment: null
+					}
 				]
 			})
 		);

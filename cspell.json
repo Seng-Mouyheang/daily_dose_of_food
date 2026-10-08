@@ -21,6 +21,8 @@
 		"clerk",
 		"cloudinary",
 		"dbaeumer",
+		"dedup",
+		"dedupes",
 		"drinktype",
 		"drizzle",
 		"esbenp",
