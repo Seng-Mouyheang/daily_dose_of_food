@@ -21,7 +21,8 @@
 		"db:studio": "drizzle-kit studio",
 		"spellcheck": "cspell \"**/*.{ts,js,svelte,md,json,yml}\" --no-progress",
 		"db:seed": "node --env-file=.env scripts/seed.ts",
-		"clerk:webhook-test": "node --env-file=.env scripts/clerk-webhook-test.ts"
+		"clerk:webhook-test": "node --env-file=.env scripts/clerk-webhook-test.ts",
+		"cleanup:orphaned-photos": "node --env-file=.env scripts/cleanup-orphaned-photos.ts"
 	},
 	"devDependencies": {
 		"@clerk/testing": "^2.2.42",

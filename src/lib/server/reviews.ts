@@ -418,7 +418,17 @@ export async function publishReview(
 
 	const mediaRowsWithUrl = rows.newMedia.map(({ version, ...row }) => ({
 		...row,
-		url: cloudinary.url(row.storageKey, { secure: true, version, format: row.format ?? undefined })
+		// quality/fetch_format 'auto' ask Cloudinary to serve a compressed, next-gen format
+		// (WebP/AVIF) per-request based on the requesting browser — the stored original is
+		// untouched, this only affects what gets delivered. format still pins the URL's file
+		// extension; f_auto overrides the actual served format regardless of that extension.
+		url: cloudinary.url(row.storageKey, {
+			secure: true,
+			version,
+			format: row.format ?? undefined,
+			fetch_format: 'auto',
+			quality: 'auto'
+		})
 	}));
 
 	const statements: BatchItem<'pg'>[] = [];

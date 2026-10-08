@@ -6,6 +6,10 @@
 
 	const MAX_PHOTOS = 10;
 	const ACCEPTED = /^image\/(png|jpe?g|webp|heic)$/;
+	// Cloudinary's upload API has no `max_file_size` request param (see signUpload's doc
+	// comment in cloudinary.ts for how including one as a signed param broke every upload), so
+	// the 12 MB ceiling this step advertises is enforced here instead, before anything uploads.
+	const MAX_UPLOAD_BYTES = 12_000_000;
 
 	let fileInput: HTMLInputElement | undefined;
 	let dragOver = $state(false);
@@ -16,7 +20,6 @@
 		timestamp: number;
 		folder: string;
 		allowed_formats: string;
-		max_file_size: number;
 		signature: string;
 		apiKey: string;
 		cloudName: string;
@@ -37,7 +40,6 @@
 		form.append('signature', signed.signature);
 		form.append('folder', signed.folder);
 		form.append('allowed_formats', signed.allowed_formats);
-		form.append('max_file_size', String(signed.max_file_size));
 
 		const res = await fetch(`https://api.cloudinary.com/v1_1/${signed.cloudName}/image/upload`, {
 			method: 'POST',
@@ -59,11 +61,10 @@
 		};
 	}
 
-	async function addFiles(fileList: FileList | null) {
-		if (!fileList) return;
+	async function addFiles(fileList: File[]) {
 		const room = MAX_PHOTOS - draft.photos.length;
-		const files = Array.from(fileList)
-			.filter((f) => ACCEPTED.test(f.type))
+		const files = fileList
+			.filter((f) => ACCEPTED.test(f.type) && f.size <= MAX_UPLOAD_BYTES)
 			.slice(0, room);
 		if (files.length === 0) return;
 
@@ -96,7 +97,27 @@
 		draft.photos.splice(index, 1);
 		if (wasCover && draft.photos.length > 0) draft.photos[0]!.isCover = true;
 	}
+
+	// Lets a copied screenshot or image go straight in with Cmd/Ctrl+V — scoped to this step's
+	// lifetime via svelte:window, so it's only live while Photos is the active step and never
+	// steals a paste meant for a text field on another step. Only intercepts (preventDefault)
+	// when the clipboard actually held an image; a text paste elsewhere is left alone.
+	function onWindowPaste(e: ClipboardEvent) {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const files: File[] = [];
+		for (const item of items) {
+			if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+			const file = item.getAsFile();
+			if (file) files.push(file);
+		}
+		if (files.length === 0) return;
+		e.preventDefault();
+		void addFiles(files);
+	}
 </script>
+
+<svelte:window onpaste={onWindowPaste} />
 
 <div class="flex flex-col gap-5">
 	<button
@@ -112,7 +133,7 @@
 		ondrop={(e) => {
 			e.preventDefault();
 			dragOver = false;
-			void addFiles(e.dataTransfer?.files ?? null);
+			void addFiles(Array.from(e.dataTransfer?.files ?? []));
 		}}
 		onclick={() => fileInput?.click()}
 		disabled={draft.photos.length >= MAX_PHOTOS}
@@ -123,14 +144,14 @@
 		<span class="text-sm font-semibold text-ink">
 			Drop photos here or <span class="text-accent-strong underline">browse</span>
 		</span>
-		<span class="text-xs text-ink-3">PNG, JPG or WEBP, up to 12 MB each</span>
+		<span class="text-xs text-ink-3">PNG, JPG or WEBP, up to 12 MB each — or paste to add</span>
 		<input
 			bind:this={fileInput}
 			type="file"
 			accept="image/png,image/jpeg,image/webp,image/heic"
 			multiple
 			class="hidden"
-			onchange={(e) => void addFiles(e.currentTarget.files)}
+			onchange={(e) => void addFiles(Array.from(e.currentTarget.files ?? []))}
 		/>
 	</button>
 
@@ -159,13 +180,13 @@
 					<img src={photo.previewUrl} alt="" class="h-full w-full object-cover" />
 					{#if photo.isCover}
 						<span
-							class="absolute top-1.5 left-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-on-accent uppercase"
+							class="absolute top-1.5 left-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase"
 							>Cover</span
 						>
 					{:else}
 						<button
 							type="button"
-							class="absolute bottom-1.5 left-1.5 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-ink shadow-card"
+							class="absolute bottom-1.5 left-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white"
 							onclick={() => makeCover(i)}
 						>
 							Make cover
