@@ -1,1 +1,155 @@
+@import url('https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400..700&family=Figtree:wght@400..700&display=swap');
 @import 'tailwindcss';
+
+/*
+ * Visual identity ported from the "Write a review" design prototype
+ * (~/Downloads/write-a-review-prototype.html) and its handoff doc: warm cream paper,
+ * espresso ink, one orange accent. Tokens are plain custom properties (not baked into
+ * @theme directly) so data-theme="dark"/"light" can override the OS preference at runtime —
+ * @theme then points at them, which keeps every color utility reactive to both.
+ */
+:root {
+	/* Tells the browser to render native controls (the date input's calendar icon, in
+	 * particular) in a palette matching the active theme, instead of a dark icon it draws by
+	 * default regardless of our own colors — which is otherwise unreadable on a dark surface. */
+	color-scheme: light;
+
+	--bg: #fcf9f3;
+	--surface: #ffffff;
+	--sunken: #f4eee4;
+	--line: #e7ded0;
+	--ink: #2a2019;
+	--ink-2: #6a5b4e;
+	--ink-3: #9b8c7d;
+	--accent: #f08a2c;
+	--accent-strong: #b9560c;
+	--accent-soft: #fdeedf;
+	--on-accent: #ffffff;
+	--good: #3c7a4b;
+	--good-soft: #e4f1e6;
+	--bad: #b0463a;
+	--bad-soft: #f9e4e0;
+	--fav: #d64f4a;
+	--fav-soft: #fbe6e5;
+	--star-empty: #e2d6c6;
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+
+	--bg: #17120e;
+	--surface: #211a14;
+	--sunken: #2a221b;
+	--line: #3a3027;
+	--ink: #f4ece1;
+	--ink-2: #c6b7a6;
+	--ink-3: #8f8172;
+	--accent: #f39540;
+	--accent-strong: #f7ae6a;
+	--accent-soft: #3a2715;
+	--on-accent: #17120e;
+	--good: #86c795;
+	--good-soft: #1e3324;
+	--bad: #ee9184;
+	--bad-soft: #3d211c;
+	--fav: #e8645e;
+	--fav-soft: #3d1f1d;
+	--star-empty: #4a3e33;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		color-scheme: dark;
+
+		--bg: #17120e;
+		--surface: #211a14;
+		--sunken: #2a221b;
+		--line: #3a3027;
+		--ink: #f4ece1;
+		--ink-2: #c6b7a6;
+		--ink-3: #8f8172;
+		--accent: #f39540;
+		--accent-strong: #f7ae6a;
+		--accent-soft: #3a2715;
+		--on-accent: #17120e;
+		--good: #86c795;
+		--good-soft: #1e3324;
+		--bad: #ee9184;
+		--bad-soft: #3d211c;
+		--fav: #e8645e;
+		--fav-soft: #3d1f1d;
+		--star-empty: #4a3e33;
+	}
+}
+
+@theme {
+	--font-display: 'Literata', Georgia, 'Times New Roman', serif;
+	--font-sans: 'Figtree', system-ui, sans-serif;
+
+	--color-bg: var(--bg);
+	--color-surface: var(--surface);
+	--color-sunken: var(--sunken);
+	--color-line: var(--line);
+	--color-ink: var(--ink);
+	--color-ink-2: var(--ink-2);
+	--color-ink-3: var(--ink-3);
+	--color-accent: var(--accent);
+	--color-accent-strong: var(--accent-strong);
+	--color-accent-soft: var(--accent-soft);
+	--color-on-accent: var(--on-accent);
+	--color-good: var(--good);
+	--color-good-soft: var(--good-soft);
+	--color-bad: var(--bad);
+	--color-bad-soft: var(--bad-soft);
+	--color-fav: var(--fav);
+	--color-fav-soft: var(--fav-soft);
+	--color-star-empty: var(--star-empty);
+
+	--radius-input: 12px;
+	--radius-tile: 14px;
+	--radius-card: 16px;
+
+	--shadow-card: 0 1px 2px rgba(70, 45, 20, 0.06), 0 8px 24px rgba(70, 45, 20, 0.08);
+	--shadow-card-lg: 0 2px 6px rgba(70, 45, 20, 0.06), 0 24px 60px rgba(70, 45, 20, 0.14);
+}
+
+body {
+	background: var(--bg);
+	color: var(--ink);
+	font-family: var(--font-sans);
+}
+
+/* In Tailwind v4's own layer (base, not components/utilities) so a component's utility
+ * classes — like TextInput's `outline-none`, which replaces this with its own focus-within
+ * border + ring — can actually override it. Plain unlayered CSS always wins over @layer'd
+ * CSS regardless of specificity, so without this, outline-none here would have no effect. */
+@layer base {
+	:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+}
+
+/* Hides the scrollbar on an element opted in via `.no-scrollbar` (the review wizard's three
+ * scrolling columns) — scrolling (wheel/trackpad/touch/drag) still works as normal via
+ * overflow:auto on the element; only the visible track/thumb is removed. scrollbar-width
+ * covers Firefox, ::-webkit-scrollbar covers Chromium/Safari. Scoped rather than applied to `*`
+ * so other scrollable areas elsewhere in the app keep their normal scrollbar affordance. */
+.no-scrollbar {
+	scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
