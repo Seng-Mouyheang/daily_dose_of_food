@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { requireUser } from '#lib/server/auth.ts';
 import {
@@ -41,7 +42,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(403, 'Photo failed verification.');
 	}
 
-	await db
+	const [inserted] = await db
 		.insert(mediaFiles)
 		.values({
 			ownerUserId: user.id,
@@ -53,7 +54,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			bytes: photo.bytes,
 			mediaStatus: 'pending'
 		})
-		.onConflictDoNothing({ target: mediaFiles.storageKey });
+		.onConflictDoNothing({ target: mediaFiles.storageKey })
+		.returning({ mediaStatus: mediaFiles.mediaStatus });
+
+	// onConflictDoNothing means a pre-existing row (almost always this same asset registered a
+	// moment ago) silently won, not this insert — returning() comes back empty either way, so the
+	// only way to tell "already pending/active, nothing to do" apart from "the orphan-cleanup job
+	// already claimed this storageKey as deleted" (the narrow window where registration is late
+	// enough that cleanup ran first) is to read back what's actually there now.
+	if (!inserted) {
+		const [existing] = await db
+			.select({ mediaStatus: mediaFiles.mediaStatus })
+			.from(mediaFiles)
+			.where(eq(mediaFiles.storageKey, photo.publicId))
+			.limit(1);
+		if (existing?.mediaStatus === 'deleted') {
+			error(409, 'This photo was already cleaned up — please re-upload it.');
+		}
+	}
 
 	return json({ ok: true });
 };

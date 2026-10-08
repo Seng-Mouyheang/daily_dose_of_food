@@ -75,6 +75,10 @@
 		// that just appeared at the other end of the DOM. The options don't exist this tick yet
 		// (same reason startOther below needs requestAnimationFrame), so wait a frame.
 		requestAnimationFrame(() => {
+			if (options.length === 0) {
+				otherButtonEl?.focus();
+				return;
+			}
 			const index = Math.max(
 				0,
 				options.findIndex((o) => o.value === value)
@@ -261,6 +265,8 @@
 					<button
 						bind:this={otherButtonEl}
 						type="button"
+						role="option"
+						aria-selected={hasOther}
 						class="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left text-sm text-ink-3 hover:bg-sunken"
 						onclick={startOther}
 						onkeydown={(e) => onOptionKeydown(e, options.length)}

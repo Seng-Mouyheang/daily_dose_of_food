@@ -5,6 +5,7 @@
 	let {
 		variant = 'primary',
 		href,
+		disabled = false,
 		children,
 		class: extraClass = '',
 		...rest
@@ -17,9 +18,14 @@
 		 *  a caller that wants link behavior gets real link semantics here instead of wrapping
 		 *  a `<Button>` in its own `<a>`. */
 		href?: string;
+		/** HTML has no `disabled` for <a> — an anchor stays focusable/navigable regardless of
+		 *  the attribute, and it never matches the `:disabled` CSS pseudo-class either. When
+		 *  `href` is set, this drops `href` instead so the link variant gets the same "inert,
+		 *  visually disabled" result as a real disabled <button>. */
+		disabled?: boolean;
 		children: Snippet;
 		class?: string;
-	} & Omit<HTMLButtonAttributes, 'class'> = $props();
+	} & Omit<HTMLButtonAttributes, 'class' | 'disabled'> = $props();
 
 	// `accent-strong` is the *text* accent (see DESIGN.md) — in dark mode it's lighter than
 	// `accent`, not darker, so using it as a hover fill would brighten the button instead of
@@ -31,7 +37,7 @@
 			: 'bg-transparent text-ink-2 transition-colors hover:bg-sunken'
 	);
 	const classes = $derived(
-		`inline-flex h-[50px] min-w-[44px] items-center justify-center gap-2 rounded-input px-5 text-[15.5px] font-bold disabled:cursor-not-allowed disabled:opacity-50 ${variantClass} ${extraClass}`
+		`inline-flex h-[50px] min-w-[44px] items-center justify-center gap-2 rounded-input px-5 text-[15.5px] font-bold ${disabled ? 'cursor-not-allowed opacity-50' : ''} ${variantClass} ${extraClass}`
 	);
 </script>
 
@@ -39,12 +45,20 @@
 	<!-- `rest` is typed against HTMLButtonAttributes (the common case); its event handlers are
 	     structurally identical for an <a> except for which element type they hand back as
 	     currentTarget, so this cast is just satisfying that mismatch, not papering over a real
-	     type error. -->
-	<a {href} class={classes} {...rest as HTMLAnchorAttributes}>
+	     type error. Dropping `href` (rather than keeping it and intercepting clicks) when
+	     `disabled` is true makes the anchor genuinely non-navigable and untabbable, not just
+	     visually disabled. -->
+	<a
+		href={disabled ? undefined : href}
+		aria-disabled={disabled}
+		tabindex={disabled ? -1 : undefined}
+		class={classes}
+		{...rest as HTMLAnchorAttributes}
+	>
 		{@render children()}
 	</a>
 {:else}
-	<button type="button" class={classes} {...rest}>
+	<button type="button" {disabled} class={classes} {...rest}>
 		{@render children()}
 	</button>
 {/if}

@@ -65,6 +65,7 @@
 		"vercel",
 		"vite",
 		"vitest",
-		"whsec"
+		"whsec",
+		"untabbable"
 	]
 }
