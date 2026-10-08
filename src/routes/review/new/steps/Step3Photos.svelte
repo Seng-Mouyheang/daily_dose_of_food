@@ -47,6 +47,28 @@
 		});
 		if (!res.ok) throw new Error('Upload failed');
 		const data = await res.json();
+
+		// Registers the upload server-side (a `media_files` row, `mediaStatus: 'pending'`) well
+		// before this review publishes — otherwise the asset exists only in this draft's
+		// localStorage, indistinguishable to a cleanup run from a stray nobody ever finished
+		// uploading, and the 24h grace period alone can't tell "still mid-wizard" from
+		// "abandoned". Best-effort: a failed registration call just leaves this one photo on the
+		// shorter grace period instead of the generous one — not worth failing the upload itself,
+		// since the valuable part (the asset landing on Cloudinary) already succeeded.
+		await fetch('/api/photos/register', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				publicId: data.public_id,
+				version: data.version,
+				signature: data.signature,
+				format: data.format,
+				width: data.width,
+				height: data.height,
+				bytes: data.bytes
+			})
+		}).catch(() => {});
+
 		return {
 			publicId: data.public_id,
 			version: data.version,
@@ -63,26 +85,59 @@
 
 	async function addFiles(fileList: File[]) {
 		const room = MAX_PHOTOS - draft.photos.length;
-		const files = fileList
-			.filter((f) => ACCEPTED.test(f.type) && f.size <= MAX_UPLOAD_BYTES)
-			.slice(0, room);
-		if (files.length === 0) return;
+		const accepted = fileList.filter((f) => ACCEPTED.test(f.type) && f.size <= MAX_UPLOAD_BYTES);
+		const files = accepted.slice(0, room);
 
-		uploadError = null;
+		if (files.length === 0) {
+			if (room <= 0 && accepted.length > 0) {
+				// At capacity with otherwise-valid files (e.g. a paste, which doesn't check the drop
+				// zone's disabled state the way a click/drag does) — don't claim they were the wrong
+				// type/size when the real reason they didn't get added is there's no room left.
+				uploadError = `You can have up to ${MAX_PHOTOS} photos.`;
+			} else if (fileList.length > 0) {
+				uploadError =
+					"Those photos couldn't be added — check they're PNG/JPG/WEBP/HEIC under 12 MB.";
+			}
+			return;
+		}
+		if (accepted.length < fileList.length) {
+			uploadError = 'Some photos were skipped — only PNG/JPG/WEBP/HEIC under 12 MB are supported.';
+		} else if (files.length < accepted.length) {
+			uploadError = `Only added ${files.length} — you can have up to ${MAX_PHOTOS} photos.`;
+		} else {
+			uploadError = null;
+		}
 		uploadingCount += files.length;
 		try {
 			const signRes = await fetch('/api/upload-signature', { method: 'POST' });
 			if (!signRes.ok) throw new Error('Could not sign upload');
 			const signed = (await signRes.json()) as SignedParams;
 
-			const uploaded = await Promise.all(files.map((f) => uploadFile(f, signed)));
+			// allSettled, not all: a batch of 3 where 1 fails must still keep the 2 that Cloudinary
+			// already stored — Promise.all would reject on the first failure and this catch would
+			// then drop every result, including already-uploaded photos, forcing a re-upload and
+			// orphaning those stored assets.
+			const results = await Promise.allSettled(files.map((f) => uploadFile(f, signed)));
 			const hadCover = draft.photos.some((p) => p.isCover);
-			uploaded.forEach((photo, i) => {
-				if (!hadCover && i === 0 && draft.photos.length === 0) photo.isCover = true;
+			let failedCount = 0;
+			for (const result of results) {
+				if (result.status === 'rejected') {
+					failedCount++;
+					continue;
+				}
+				const photo = result.value;
+				if (!hadCover && draft.photos.length === 0) photo.isCover = true;
 				draft.photos.push(photo);
-			});
+			}
+			if (failedCount > 0) {
+				const succeededCount = files.length - failedCount;
+				uploadError =
+					succeededCount === 0
+						? "Couldn't upload those photos. Try again."
+						: `Uploaded ${succeededCount}, but ${failedCount} failed — try those again.`;
+			}
 		} catch {
-			uploadError = "Couldn't upload one or more photos. Try again.";
+			uploadError = "Couldn't upload those photos. Try again.";
 		} finally {
 			uploadingCount -= files.length;
 		}
@@ -180,7 +235,7 @@
 					<img src={photo.previewUrl} alt="" class="h-full w-full object-cover" />
 					{#if photo.isCover}
 						<span
-							class="absolute top-1.5 left-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase"
+							class="absolute top-1.5 left-1.5 rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold tracking-wide text-on-accent uppercase"
 							>Cover</span
 						>
 					{:else}

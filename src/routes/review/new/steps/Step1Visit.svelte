@@ -5,12 +5,19 @@
 	import TileGroup from '#lib/components/TileGroup.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import type { PlaceOption, ReviewDraft } from '#lib/review/draft.svelte.ts';
+	import { todayIso } from '#lib/review/format.ts';
 
 	let {
 		draft,
+		dateInvalid = false,
 		invalid = false,
 		onDismiss
-	}: { draft: ReviewDraft; invalid?: boolean; onDismiss?: () => void } = $props();
+	}: {
+		draft: ReviewDraft;
+		dateInvalid?: boolean;
+		invalid?: boolean;
+		onDismiss?: () => void;
+	} = $props();
 
 	let results = $state<PlaceOption[]>([]);
 	let searching = $state(false);
@@ -63,7 +70,7 @@
 		onDismiss?.();
 	}
 
-	const today = new Date().toISOString().slice(0, 10);
+	const today = todayIso();
 </script>
 
 <div class="flex flex-col gap-7">
@@ -117,6 +124,8 @@
 			iconClass="text-accent-strong"
 			max={today}
 			bind:value={draft.visitedAt}
+			oninput={() => onDismiss?.()}
+			invalid={dateInvalid}
 		/>
 	</Field>
 

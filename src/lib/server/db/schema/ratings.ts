@@ -45,7 +45,7 @@ export const ratingCriteriaOptions = pgTable(
 		isActive: boolean('is_active').notNull().default(true)
 	},
 	(t) => [
-		unique('uq_category_criteria').on(t.ratingCategoryId, t.label),
+		unique('uq_category_criteria').on(t.ratingCategoryId, t.label, t.sentiment),
 		check('chk_criteria_sentiment', sql`${t.sentiment} IN ('positive', 'neutral', 'negative')`)
 	]
 );

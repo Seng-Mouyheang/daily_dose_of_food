@@ -2,6 +2,8 @@
  *  publish payload itself (see payload.ts for the pure mapping to PublishReview). Field names
  *  mostly track the prototype's own `S` state object. */
 
+import { todayIso } from './format.ts';
+
 export type ReviewTypeChoice = 'dish' | 'beverage' | 'both';
 export type VisitType = 'dine_in' | 'takeaway' | 'delivery';
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -147,12 +149,6 @@ export function findRating(
 }
 
 const STORAGE_KEY = 'ddf-review-draft';
-
-/** A plain, one-off Date instance (never stored as reactive state itself — only this derived
- *  string is) to seed the date field with today, capped the same way the date input is. */
-function todayIso(): string {
-	return new Date().toISOString().slice(0, 10);
-}
 
 export class ReviewDraft {
 	reviewId = $state(crypto.randomUUID());

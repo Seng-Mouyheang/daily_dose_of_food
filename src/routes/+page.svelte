@@ -11,9 +11,7 @@
 	{#if data.user}
 		<p class="mt-2 text-ink-2">Signed in as {data.user.displayName}.</p>
 
-		<a href="/review/new" class="mt-6 inline-block">
-			<Button>Write a review</Button>
-		</a>
+		<Button href="/review/new" class="mt-6">Write a review</Button>
 
 		<details class="mt-8 text-sm text-ink-3">
 			<summary class="cursor-pointer font-medium">Account details</summary>

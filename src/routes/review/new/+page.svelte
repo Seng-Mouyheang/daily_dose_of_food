@@ -3,6 +3,7 @@
 	import { enhance } from '$app/forms';
 	import Icon from '#lib/components/Icon.svelte';
 	import Button from '#lib/components/Button.svelte';
+	import CollapsibleRail from '#lib/components/CollapsibleRail.svelte';
 	import ReviewCard from '#lib/review/ReviewCard.svelte';
 	import { ReviewDraft } from '#lib/review/draft.svelte.ts';
 	import { buildPublishPayload } from '#lib/review/payload.ts';
@@ -26,7 +27,9 @@
 	let submitting = $state(false);
 	let savedFlash = $state(false);
 
-	onMount(() => draft.restoreFromLocalStorage());
+	onMount(() => {
+		draft.restoreFromLocalStorage();
+	});
 
 	$effect(() => {
 		draft.saveToLocalStorage();
@@ -56,8 +59,13 @@
 	];
 
 	function validateStep(step: number): string | null {
-		if (step === 1 && !draft.place && !draft.newPlaceName.trim()) {
-			return 'Please enter the name or location of the place.';
+		if (step === 1) {
+			if (!draft.visitedAt.trim()) {
+				return 'Please choose when you visited.';
+			}
+			if (!draft.place && !draft.newPlaceName.trim()) {
+				return 'Please enter the name or location of the place.';
+			}
 		}
 		if (step === 2) {
 			if (draft.hasDish && !draft.dish.itemName.trim()) {
@@ -95,6 +103,7 @@
 	function dismissAttempt() {
 		attemptedStep = null;
 	}
+	const dateInvalid = $derived(attemptedStep === 1 && !draft.visitedAt.trim());
 	const placeInvalid = $derived(attemptedStep === 1 && !draft.place && !draft.newPlaceName.trim());
 	const dishNameInvalid = $derived(
 		attemptedStep === 2 && draft.hasDish && !draft.dish.itemName.trim()
@@ -169,8 +178,12 @@
 	</div>
 
 	<!-- Left rail: step nav (desktop only). -->
-	<aside
-		class="hidden shrink-0 flex-col border-r border-line px-6 py-8 lg:flex lg:h-full lg:w-[280px] lg:overflow-y-auto"
+	<CollapsibleRail
+		side="left"
+		widthPx={280}
+		storageKey="ddf-review-left-collapsed"
+		label="step navigation"
+		asideClass="px-6 py-8 lg:overflow-y-auto"
 	>
 		<h2 class="font-display text-xl font-semibold text-ink">New review</h2>
 		<nav class="mt-6 flex flex-col gap-1">
@@ -209,10 +222,10 @@
 				</button>
 			{/each}
 		</nav>
-	</aside>
+	</CollapsibleRail>
 
 	<!-- Centre: the step content + sticky action footer. -->
-	<div class="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-y-auto">
+	<div class="no-scrollbar flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-y-auto">
 		<form
 			method="POST"
 			action="?/publish"
@@ -255,7 +268,7 @@
 				{/if}
 
 				{#if draft.step === 1}
-					<Step1Visit {draft} invalid={placeInvalid} onDismiss={dismissAttempt} />
+					<Step1Visit {draft} {dateInvalid} invalid={placeInvalid} onDismiss={dismissAttempt} />
 				{:else if draft.step === 2}
 					<Step2Rating
 						{draft}
@@ -270,7 +283,14 @@
 				{:else if draft.step === 3}
 					<Step3Photos {draft} />
 				{:else}
-					<Step4Review {draft} categories={data.lookups.categories} onEdit={goTo} />
+					<Step4Review
+						{draft}
+						categories={data.lookups.categories}
+						cuisineTypes={data.lookups.cuisineTypes}
+						foodTypes={data.lookups.foodTypes}
+						drinkTypes={data.lookups.drinkTypes}
+						onEdit={goTo}
+					/>
 				{/if}
 			</div>
 
@@ -292,16 +312,12 @@
 					{savedFlash ? 'Saved' : 'Save draft'}
 				</button>
 				{#if draft.step < 4}
-					<Button class="flex-1 justify-center text-white lg:flex-none" onclick={goNext}>
+					<Button class="flex-1 justify-center lg:flex-none" onclick={goNext}>
 						{draft.step === 3 && draft.photos.length === 0 ? 'Skip photos' : 'Continue'}
 						<Icon name="chevR" size={16} />
 					</Button>
 				{:else}
-					<Button
-						type="submit"
-						class="flex-1 justify-center text-white lg:flex-none"
-						disabled={submitting}
-					>
+					<Button type="submit" class="flex-1 justify-center lg:flex-none" disabled={submitting}>
 						{submitting ? 'Publishing…' : 'Publish review'}
 					</Button>
 				{/if}
@@ -310,30 +326,42 @@
 	</div>
 
 	<!-- Right rail: live card preview (+ visibility picker on step 4). -->
-	<aside
-		class="hidden shrink-0 flex-col gap-4 border-l border-line px-6 py-8 lg:flex lg:h-full lg:w-[420px] lg:overflow-y-auto"
+	<CollapsibleRail
+		side="right"
+		widthPx={420}
+		storageKey="ddf-review-right-collapsed"
+		label="card preview"
+		asideClass="gap-4 px-6 pt-8 lg:overflow-hidden"
 	>
-		<div class="flex items-center justify-between">
+		<div class="flex shrink-0 items-center justify-between">
 			<span class="flex items-center gap-1.5">
 				<p class="text-xs font-semibold tracking-wide text-ink-3 uppercase">Card preview</p>
 				<InfoTooltip
 					text="The card updates as you type. This is how friends will see it in their feed."
 				/>
 			</span>
-			<span class="flex items-center gap-1.5 text-xs font-medium text-accent">
-				<span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
-				Live
-			</span>
 		</div>
-		<ReviewCard
-			draft={draft.toSnapshot()}
-			categories={data.lookups.categories}
-			foodTypes={data.lookups.foodTypes}
-			drinkTypes={data.lookups.drinkTypes}
-			user={data.user}
-		/>
-		{#if draft.step === 4}
-			<VisibilityPicker bind:value={draft.visibility} />
-		{/if}
-	</aside>
+		<!-- min-h-0 lets this flex child shrink below its content height so overflow-y-auto can
+		     actually kick in, instead of the content just growing the aside past the viewport.
+		     Each child below also needs shrink-0 — otherwise flexbox's default flex-shrink:1
+		     squeezes the (overflow-hidden) card shorter than its content to fit the available
+		     space before scrolling ever kicks in, clipping the card's own footer/description
+		     instead of the parent actually scrolling. -->
+		<div class="no-scrollbar flex flex-col gap-4 pb-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+			<div class="shrink-0">
+				<ReviewCard
+					draft={draft.toSnapshot()}
+					categories={data.lookups.categories}
+					foodTypes={data.lookups.foodTypes}
+					drinkTypes={data.lookups.drinkTypes}
+					user={data.user}
+				/>
+			</div>
+			{#if draft.step === 4}
+				<div class="shrink-0">
+					<VisibilityPicker bind:value={draft.visibility} />
+				</div>
+			{/if}
+		</div>
+	</CollapsibleRail>
 </div>

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	applicableItemCategoryIds,
 	applicablePlaceCategoryIds,
+	assertNoDeletedMedia,
 	buildReviewRows,
+	InvalidPhotoError,
 	pointWkt,
 	type PublishContext,
 	type RatingCategoryFlags
@@ -137,6 +139,30 @@ describe('applicableItemCategoryIds', () => {
 
 	it('drink items only get appliesToDrink categories', () => {
 		expect(applicableItemCategoryIds(CATEGORIES, 'drink')).toEqual(new Set([2]));
+	});
+});
+
+describe('assertNoDeletedMedia', () => {
+	it('throws InvalidPhotoError for the deleted row', () => {
+		expect(() =>
+			assertNoDeletedMedia([
+				{ storageKey: 'a', mediaStatus: 'pending' },
+				{ storageKey: 'b', mediaStatus: 'deleted' }
+			])
+		).toThrow(InvalidPhotoError);
+	});
+
+	it('allows pending and active rows through', () => {
+		expect(() =>
+			assertNoDeletedMedia([
+				{ storageKey: 'a', mediaStatus: 'pending' },
+				{ storageKey: 'b', mediaStatus: 'active' }
+			])
+		).not.toThrow();
+	});
+
+	it('allows an empty list through', () => {
+		expect(() => assertNoDeletedMedia([])).not.toThrow();
 	});
 });
 

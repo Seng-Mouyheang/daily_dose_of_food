@@ -2,7 +2,8 @@
 	import type { NestedRatingCategory } from '#lib/server/lookups.ts';
 	import Icon from '../components/Icon.svelte';
 	import { STAR_PATH } from '../components/star-path.ts';
-	import { formatVisitDate } from './format.ts';
+	import { placeCategoriesFor } from './categories.ts';
+	import { formatVisitDate, resolveTypeLabel } from './format.ts';
 	import type { ReviewDraftSnapshot } from './payload.ts';
 
 	let {
@@ -20,11 +21,26 @@
 	} = $props();
 
 	const cover = $derived(draft.photos.find((p) => p.isCover) ?? draft.photos[0] ?? null);
-	const allRatings = $derived([
-		...draft.placeRatings,
-		...draft.dish.ratings,
-		...draft.drink.ratings
-	]);
+
+	// draft.placeRatings/dish.ratings/drink.ratings only ever grow (Step 2's seeding effect
+	// never removes an entry), so switching visit type away from one that had a category
+	// applicable, or switching review type away from "Both", leaves a stale rating sitting in
+	// the array for a category/item no longer in play. The server drops exactly these when
+	// publishing (applicablePlaceCategoryIds/applicableItemCategoryIds in reviews.ts), and
+	// buildPublishPayload only sends the active item(s) at all — mirrored here so the live card
+	// preview never shows a star/tag/average for something that won't actually be published.
+	const allRatings = $derived.by(() => {
+		const placeCategoryIds = new Set(
+			placeCategoriesFor(categories, draft.visitType).map((c) => c.id)
+		);
+		const hasDish = draft.reviewType !== 'beverage';
+		const hasBev = draft.reviewType !== 'dish';
+		return [
+			...draft.placeRatings.filter((r) => placeCategoryIds.has(r.ratingCategoryId)),
+			...(hasDish ? draft.dish.ratings : []),
+			...(hasBev ? draft.drink.ratings : [])
+		];
+	});
 
 	const overallRating = $derived.by(() => {
 		const values = allRatings.flatMap((r) => (r.ratingValue === null ? [] : [r.ratingValue]));
@@ -53,11 +69,17 @@
 	// in play. "Both" prefers the dish's type, matching how itemName above prefers the dish.
 	const itemTypeLabel = $derived.by(() => {
 		if (draft.reviewType !== 'beverage') {
-			const id = draft.dish.foodTypeIds[0];
-			return foodTypes.find((f) => f.id === id)?.name ?? null;
+			return resolveTypeLabel(
+				draft.dish.foodTypeIds[0] ?? null,
+				draft.dish.foodTypeOther ?? null,
+				foodTypes
+			);
 		}
-		const id = draft.drink.drinkTypeId;
-		return drinkTypes.find((d) => d.id === id)?.name ?? null;
+		return resolveTypeLabel(
+			draft.drink.drinkTypeId,
+			draft.drink.drinkTypeOther ?? null,
+			drinkTypes
+		);
 	});
 
 	const price = $derived.by(() => {
@@ -87,6 +109,9 @@
 
 	const authorName = $derived(user?.displayName ?? 'You');
 	const authorInitial = $derived(authorName.charAt(0).toUpperCase());
+
+	let tagsExpanded = $state(false);
+	const visibleTags = $derived(tagsExpanded ? tags : tags.slice(0, 4));
 </script>
 
 <article class="overflow-hidden rounded-card border border-line bg-surface shadow-card">
@@ -161,21 +186,26 @@
 
 		{#if tags.length}
 			<div class="mt-2 flex flex-wrap gap-1.5">
-				{#each tags.slice(0, 4) as tag (tag)}
+				{#each visibleTags as tag (tag)}
 					<span class="rounded-full bg-good-soft px-2 py-0.5 text-xs font-medium text-good"
 						>{tag}</span
 					>
 				{/each}
 				{#if tags.length > 4}
-					<span class="rounded-full border border-line px-2 py-0.5 text-xs text-ink-3"
-						>+{tags.length - 4} more</span
+					<button
+						type="button"
+						class="rounded-full border border-line px-2 py-0.5 text-xs text-ink-3 transition-colors hover:bg-sunken"
+						aria-expanded={tagsExpanded}
+						onclick={() => (tagsExpanded = !tagsExpanded)}
 					>
+						{tagsExpanded ? 'Show less' : `+${tags.length - 4} more`}
+					</button>
 				{/if}
 			</div>
 		{/if}
 
 		{#if draft.description}
-			<p class="mt-2 line-clamp-3 text-sm text-ink-2">{draft.description}</p>
+			<p class="mt-3 line-clamp-3 text-sm text-ink-2">{draft.description}</p>
 		{/if}
 	</div>
 

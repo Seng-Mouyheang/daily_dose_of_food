@@ -3,8 +3,10 @@
  * uploads straight to Cloudinary the moment a photo is added, well before the review is ever
  * published (see Step3Photos.svelte) — but never ended up referenced by a published review,
  * either because the photo was removed again before publish or the wizard was abandoned
- * entirely. Only touches assets older than the grace period (see photoCleanupLogic.ts), so an
- * in-progress draft's photos are never at risk.
+ * entirely. Step3Photos.svelte registers each upload server-side as it happens (a `media_files`
+ * row with `mediaStatus: 'pending'`, via /api/photos/register), so a draft that's realistically
+ * still in progress is protected far longer than an asset with no row at all — see
+ * GRACE_PERIOD_MS vs PENDING_UPLOAD_GRACE_PERIOD_MS in photoCleanupLogic.ts.
  *
  * This is a standalone script (not an import of src/lib/server/photoCleanup.ts) because that
  * module and its db/cloudinary dependencies read secrets through SvelteKit's `$app/env/private`,
@@ -17,9 +19,15 @@
  */
 import { neon } from '@neondatabase/serverless';
 import { v2 as cloudinary } from 'cloudinary';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/neon-http';
 import { mediaFiles } from '../src/lib/server/db/schema/index.ts';
-import { findOrphanedAssets, type UploadedAsset } from '../src/lib/server/photoCleanupLogic.ts';
+import {
+	findOrphanedAssets,
+	GRACE_PERIOD_MS,
+	PENDING_UPLOAD_GRACE_PERIOD_MS,
+	type UploadedAsset
+} from '../src/lib/server/photoCleanupLogic.ts';
 
 const UPLOAD_ROOT_PREFIX = 'daily-dose-of-food/u/';
 const dryRun = process.argv.includes('--dry-run');
@@ -59,6 +67,58 @@ async function destroyAssets(publicIds: string[]): Promise<void> {
 	await Promise.all(batches.map((batch) => cloudinary.api.delete_resources(batch)));
 }
 
+/** Extracts the uploader's userId from a publicId under UPLOAD_ROOT_PREFIX — the inverse of
+ *  signUpload's folder scheme (see cloudinary.ts's publicIdBelongsToUser). */
+function ownerUserIdFromPublicId(publicId: string): string | null {
+	if (!publicId.startsWith(UPLOAD_ROOT_PREFIX)) return null;
+	return publicId.slice(UPLOAD_ROOT_PREFIX.length).split('/')[0] || null;
+}
+
+/**
+ * Atomically claims one orphan candidate for deletion immediately before destroying it — closes
+ * the gap between the orphan-list query above and the eventual Cloudinary destroy call, during
+ * which the asset could have been referenced by a publish. A plain re-read right before
+ * deleting wouldn't close this on its own: the publish could still land in the moment between
+ * that re-read and the destroy call. Safety instead comes from each branch below being a single
+ * conditional SQL statement Postgres evaluates and commits atomically — either this call wins
+ * the row (nothing has referenced the asset since the original read, so it's still safe to
+ * destroy) or it doesn't (something did — skip it). publishReview's own matching check
+ * (assertNoDeletedMedia, reviews.ts) closes the other direction: a publish that reads a row as
+ * 'deleted' after this wins the claim is rejected outright.
+ */
+async function claimOrphanForDeletion(asset: UploadedAsset): Promise<boolean> {
+	const [existing] = await db
+		.select({ mediaStatus: mediaFiles.mediaStatus })
+		.from(mediaFiles)
+		.where(eq(mediaFiles.storageKey, asset.publicId))
+		.limit(1);
+
+	if (!existing) {
+		const ownerUserId = ownerUserIdFromPublicId(asset.publicId);
+		if (!ownerUserId) return false;
+		const [claimed] = await db
+			.insert(mediaFiles)
+			.values({
+				ownerUserId,
+				storageKey: asset.publicId,
+				url: '',
+				bytes: asset.bytes,
+				mediaStatus: 'deleted'
+			})
+			.onConflictDoNothing({ target: mediaFiles.storageKey })
+			.returning({ id: mediaFiles.id });
+		return !!claimed;
+	}
+
+	if (existing.mediaStatus !== 'pending') return false;
+	const [claimed] = await db
+		.update(mediaFiles)
+		.set({ mediaStatus: 'deleted' })
+		.where(and(eq(mediaFiles.storageKey, asset.publicId), eq(mediaFiles.mediaStatus, 'pending')))
+		.returning({ id: mediaFiles.id });
+	return !!claimed;
+}
+
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	const kb = bytes / 1024;
@@ -66,12 +126,28 @@ function formatBytes(bytes: number): string {
 	return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-const [assets, referenced] = await Promise.all([
+const [assets, rows] = await Promise.all([
 	listUploadedAssets(),
-	db.select({ storageKey: mediaFiles.storageKey }).from(mediaFiles)
+	db
+		.select({ storageKey: mediaFiles.storageKey, mediaStatus: mediaFiles.mediaStatus })
+		.from(mediaFiles)
 ]);
-const referencedKeys = new Set(referenced.map((r) => r.storageKey));
-const orphans = findOrphanedAssets(assets, referencedKeys, new Date());
+// A 'pending' row (registered at upload time, never published — see /api/photos/register) only
+// protects its asset for PENDING_UPLOAD_GRACE_PERIOD_MS, not indefinitely like any other status.
+const referencedKeys = new Set(
+	rows.filter((r) => r.mediaStatus !== 'pending').map((r) => r.storageKey)
+);
+const pendingKeys = new Set(
+	rows.filter((r) => r.mediaStatus === 'pending').map((r) => r.storageKey)
+);
+const orphans = findOrphanedAssets(
+	assets,
+	referencedKeys,
+	new Date(),
+	GRACE_PERIOD_MS,
+	pendingKeys,
+	PENDING_UPLOAD_GRACE_PERIOD_MS
+);
 
 if (orphans.length === 0) {
 	console.log(`Checked ${assets.length} uploaded asset(s) — nothing orphaned.`);
@@ -91,6 +167,15 @@ for (const o of orphans) {
 if (dryRun) {
 	console.log('\n(dry run — nothing deleted; re-run without --dry-run to actually delete these)');
 } else {
-	await destroyAssets(orphans.map((o) => o.publicId));
-	console.log(`\nDeleted ${orphans.length} orphaned photo(s).`);
+	// Claims each orphan before destroying it (see claimOrphanForDeletion) — one that got
+	// referenced by a publish in the time since the query above is skipped instead of destroyed
+	// out from under it.
+	const won = await Promise.all(orphans.map((o) => claimOrphanForDeletion(o)));
+	const claimed = orphans.filter((_, i) => won[i]);
+	if (claimed.length) await destroyAssets(claimed.map((o) => o.publicId));
+	const skipped = orphans.length - claimed.length;
+	console.log(
+		`\nDeleted ${claimed.length} orphaned photo(s).` +
+			(skipped > 0 ? ` Skipped ${skipped} that got referenced in the meantime.` : '')
+	);
 }

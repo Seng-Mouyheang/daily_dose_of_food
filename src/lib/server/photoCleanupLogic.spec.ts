@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { findOrphanedAssets, type UploadedAsset } from './photoCleanupLogic.ts';
+import {
+	findOrphanedAssets,
+	GRACE_PERIOD_MS,
+	PENDING_UPLOAD_GRACE_PERIOD_MS,
+	type UploadedAsset
+} from './photoCleanupLogic.ts';
 
 const HOUR = 60 * 60 * 1000;
 const now = new Date('2026-10-08T12:00:00.000Z');
@@ -50,5 +55,40 @@ describe('findOrphanedAssets', () => {
 
 	it('returns an empty array when nothing is orphaned', () => {
 		expect(findOrphanedAssets([], new Set(), now)).toEqual([]);
+	});
+
+	describe('pending uploads (a media_files row registered at upload time, never published)', () => {
+		it('protects a pending upload past the ordinary grace period, up to the pending grace period', () => {
+			const assets = [asset('a', 48)]; // 2 days — past the 24h grace period
+			expect(findOrphanedAssets(assets, new Set(), now, GRACE_PERIOD_MS, new Set(['a']))).toEqual(
+				[]
+			);
+		});
+
+		it('still flags a pending upload once it is older than the pending grace period', () => {
+			const assets = [
+				{
+					...asset('a', 1),
+					createdAt: new Date(now.getTime() - PENDING_UPLOAD_GRACE_PERIOD_MS - 1)
+				}
+			];
+			expect(findOrphanedAssets(assets, new Set(), now, GRACE_PERIOD_MS, new Set(['a']))).toEqual(
+				assets
+			);
+		});
+
+		it('a published photo (non-pending row) is never orphaned, even past the pending grace period', () => {
+			const assets = [
+				{
+					...asset('a', 1),
+					createdAt: new Date(now.getTime() - PENDING_UPLOAD_GRACE_PERIOD_MS - 1)
+				}
+			];
+			// Referenced (not pending) takes priority over the pending set even if it were passed
+			// to both — mirrors a row whose status moved from 'pending' to something else.
+			expect(
+				findOrphanedAssets(assets, new Set(['a']), now, GRACE_PERIOD_MS, new Set(['a']))
+			).toEqual([]);
+		});
 	});
 });

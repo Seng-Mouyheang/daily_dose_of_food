@@ -29,7 +29,10 @@ export const places = pgTable(
 		id: uuid('id').primaryKey().defaultRandom(),
 		placeCategoryId: smallint('place_category_id').references(() => placeCategories.id),
 		name: varchar('name', { length: 200 }).notNull(),
-		slug: varchar('slug', { length: 250 }),
+		/** Only curated/seeded places get one (see scripts/seed.ts) — a user-created place
+		 *  (reviews.ts) leaves this null, and a plain unique index allows any number of NULLs,
+		 *  so this only ever constrains the seeded rows against each other. */
+		slug: varchar('slug', { length: 250 }).unique(),
 		description: text('description'),
 		phoneNumber: varchar('phone_number', { length: 50 }),
 		websiteUrl: text('website_url'),

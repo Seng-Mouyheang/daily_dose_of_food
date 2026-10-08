@@ -1,10 +1,16 @@
 import { createHash } from 'node:crypto';
-import { inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { CategoryRatingInput, PublishReview, ReviewItemInput } from '../review/schema.ts';
-import { cloudinary, cloudinarySignatureValid, publicIdBelongsToUser } from './cloudinary.ts';
+import { cloudinarySignatureValid, deliveryUrl, publicIdBelongsToUser } from './cloudinary.ts';
 import { db } from './db/index.ts';
-import { findOrCreateCriteriaOption, findOrCreateLookupEntry } from './lookups.ts';
+import {
+	deleteUnusedCriteriaOption,
+	deleteUnusedLookupEntry,
+	findOrCreateCriteriaOption,
+	findOrCreateLookupEntry,
+	type LookupKind
+} from './lookups.ts';
 import {
 	drinkItemDetails,
 	foodItemDetails,
@@ -26,6 +32,19 @@ export class InvalidPhotoError extends Error {
 	constructor(publicId: string) {
 		super(`Photo ${publicId} failed verification`);
 		this.name = 'InvalidPhotoError';
+	}
+}
+
+/** Thrown when a publish payload's client-generated `reviewId` already belongs to a review
+ *  owned by someone else — see publishReview's ownership check. `reviewId` is visible in
+ *  `/review/<id>` URLs, so this must be rejected outright rather than silently merged: every
+ *  child row (category ratings, items, media, ...) is keyed off `reviewId` via a deterministic
+ *  id, so a forged id would otherwise let an attacker splice extra rows into another user's
+ *  already-published review. */
+export class ReviewOwnershipError extends Error {
+	constructor() {
+		super('This review cannot be published.');
+		this.name = 'ReviewOwnershipError';
 	}
 }
 
@@ -327,52 +346,116 @@ export function buildReviewRows(input: PublishReview, ctx: PublishContext): Revi
 	};
 }
 
+/** A photo whose existing media_files row is already `mediaStatus: 'deleted'` means the
+ *  orphaned-photo cleanup job's claimOrphanForDeletion (photoCleanup.ts) has already committed
+ *  to destroying its Cloudinary asset, or already has — reusing that id here would silently
+ *  publish a review pointing at a dead (or about-to-be-dead) photo. Treated the same as a photo
+ *  that failed Cloudinary verification: the publish is rejected and the user has to re-upload
+ *  it. Exported and pure so it's unit-testable without a DB. */
+export function assertNoDeletedMedia(rows: { storageKey: string; mediaStatus: string }[]): void {
+	const deleted = rows.find((r) => r.mediaStatus === 'deleted');
+	if (deleted) throw new InvalidPhotoError(deleted.storageKey);
+}
+
 /** Looks up which of the given Cloudinary public_ids already have a media_files row, so a
  *  retried publish (or a photo picked from an earlier draft) reuses the row instead of
- *  violating storage_key's unique constraint inside the batch below. */
+ *  violating storage_key's unique constraint inside the batch below. Rejects outright (see
+ *  assertNoDeletedMedia) if any of them has already been claimed by the orphan-cleanup job. */
 async function findExistingMediaIds(publicIds: string[]): Promise<Map<string, string>> {
 	if (publicIds.length === 0) return new Map();
 	const rows = await db
-		.select({ id: mediaFiles.id, storageKey: mediaFiles.storageKey })
+		.select({
+			id: mediaFiles.id,
+			storageKey: mediaFiles.storageKey,
+			mediaStatus: mediaFiles.mediaStatus
+		})
 		.from(mediaFiles)
 		.where(inArray(mediaFiles.storageKey, publicIds));
+	assertNoDeletedMedia(rows);
 	return new Map(rows.map((r) => [r.storageKey, r.id]));
+}
+
+/** Tracks lookup/criteria rows newly inserted while resolving a publish's "Other…" entries, so
+ *  they can be rolled back with rollbackCreatedEntries if the publish fails afterward — a row
+ *  this collector didn't add was reused from an earlier request and must never be deleted. */
+interface CreatedEntries {
+	lookups: { kind: LookupKind; id: number }[];
+	criteria: number[];
+}
+
+async function rollbackCreatedEntries(created: CreatedEntries): Promise<void> {
+	await Promise.all([
+		...created.lookups.map((l) => deleteUnusedLookupEntry(l.kind, l.id)),
+		...created.criteria.map((id) => deleteUnusedCriteriaOption(id))
+	]);
 }
 
 /** Resolves a rating's "+"-added custom tags into real rating_criteria_options rows, creating
  *  one if it doesn't exist yet — see findOrCreateCriteriaOption. Done here, right before the
- *  review is actually written, so a half-typed custom tag only ever becomes a permanent
- *  criteria option once the publish itself succeeds. */
+ *  review is actually written; newly created rows are recorded in `created` and rolled back by
+ *  the caller if the publish fails afterward (see rollbackCreatedEntries). */
 async function resolveRatingCustomCriteria(
-	rating: CategoryRatingInput
+	rating: CategoryRatingInput,
+	created: CreatedEntries
 ): Promise<CategoryRatingInput> {
 	if (rating.customCriteria.length === 0) return rating;
-	const resolved = await Promise.all(
+	// allSettled, not all: these run in parallel, and if one rejects (an empty slug, a transient
+	// DB error) while a sibling has already inserted its own row, Promise.all would reject
+	// immediately without ever reading that sibling's result — losing it from `created` and
+	// leaving an orphaned criteria option that rollbackCreatedEntries can never know to delete.
+	// Recording every fulfilled result first, then rethrowing, keeps that tracking complete.
+	const settled = await Promise.allSettled(
 		rating.customCriteria.map((c) =>
 			findOrCreateCriteriaOption(rating.ratingCategoryId, c.sentiment, c.label)
 		)
 	);
+	const resolvedIds: number[] = [];
+	for (const s of settled) {
+		if (s.status !== 'fulfilled') continue;
+		if (s.value.created) created.criteria.push(s.value.id);
+		resolvedIds.push(s.value.id);
+	}
+	const rejected = settled.find((s) => s.status === 'rejected');
+	if (rejected?.status === 'rejected') throw rejected.reason;
 	return {
 		...rating,
-		criteriaOptionIds: [...new Set([...rating.criteriaOptionIds, ...resolved.map((r) => r.id)])],
+		criteriaOptionIds: [...new Set([...rating.criteriaOptionIds, ...resolvedIds])],
 		customCriteria: []
 	};
 }
 
 /** Resolves any "Other…" lookup names typed into the wizard (cuisine / food / drink type)
  *  into real rows, creating one if it doesn't exist yet — see findOrCreateLookupEntry. Also
- *  resolves each item-scoped rating's custom criteria (see resolveRatingCustomCriteria). Done
- *  here, right before the review is actually written, so a half-typed custom entry only ever
- *  becomes a permanent row once the publish itself succeeds. */
-function resolveItemLookupOthers(items: ReviewItemInput[]): Promise<ReviewItemInput[]> {
+ *  resolves each item-scoped rating's custom criteria (see resolveRatingCustomCriteria). Newly
+ *  created rows are recorded in `created` and rolled back by the caller if the publish fails
+ *  afterward (see rollbackCreatedEntries). */
+function resolveItemLookupOthers(
+	items: ReviewItemInput[],
+	created: CreatedEntries
+): Promise<ReviewItemInput[]> {
 	return Promise.all(
 		items.map(async (item) => {
-			const ratings = await Promise.all(item.ratings.map(resolveRatingCustomCriteria));
+			const ratings = await Promise.all(
+				item.ratings.map((r) => resolveRatingCustomCriteria(r, created))
+			);
 			if (item.itemType === 'food') {
-				const [cuisine, foodType] = await Promise.all([
+				// allSettled — same reason as resolveRatingCustomCriteria above: cuisine and food
+				// type resolve in parallel, and either one creating a row before the other rejects
+				// must still get recorded, not lost to Promise.all's immediate-reject behavior.
+				const [cuisineResult, foodTypeResult] = await Promise.allSettled([
 					item.cuisineTypeOther ? findOrCreateLookupEntry('cuisine', item.cuisineTypeOther) : null,
 					item.foodTypeOther ? findOrCreateLookupEntry('food', item.foodTypeOther) : null
 				]);
+				if (cuisineResult.status === 'fulfilled' && cuisineResult.value?.created) {
+					created.lookups.push({ kind: 'cuisine', id: cuisineResult.value.id });
+				}
+				if (foodTypeResult.status === 'fulfilled' && foodTypeResult.value?.created) {
+					created.lookups.push({ kind: 'food', id: foodTypeResult.value.id });
+				}
+				if (cuisineResult.status === 'rejected') throw cuisineResult.reason;
+				if (foodTypeResult.status === 'rejected') throw foodTypeResult.reason;
+				const cuisine = cuisineResult.value;
+				const foodType = foodTypeResult.value;
 				return {
 					...item,
 					ratings,
@@ -383,6 +466,7 @@ function resolveItemLookupOthers(items: ReviewItemInput[]): Promise<ReviewItemIn
 			const drinkType = item.drinkTypeOther
 				? await findOrCreateLookupEntry('drink', item.drinkTypeOther)
 				: null;
+			if (drinkType?.created) created.lookups.push({ kind: 'drink', id: drinkType.id });
 			return { ...item, ratings, drinkTypeId: drinkType ? drinkType.id : item.drinkTypeId };
 		})
 	);
@@ -395,91 +479,142 @@ export async function publishReview(
 	input: PublishReview,
 	categories: RatingCategoryFlags[]
 ) {
+	// `reviewId` is client-generated (ReviewDraft's crypto.randomUUID()) and every child row is
+	// keyed off it deterministically (see stableId) with onConflictDoNothing — so without this
+	// check, submitting another user's reviewId (visible in /review/<id>) would silently splice
+	// new category-rating/media/etc. rows into their already-published review instead of being
+	// rejected. A same-user resubmit of an id that already published is treated as an idempotent
+	// no-op rather than merging more rows into it.
+	const [existing] = await db
+		.select({ userId: reviews.userId })
+		.from(reviews)
+		.where(eq(reviews.id, input.reviewId))
+		.limit(1);
+	if (existing) {
+		if (existing.userId !== userId) throw new ReviewOwnershipError();
+		return input.reviewId;
+	}
+
 	for (const photo of input.photos) {
 		if (!publicIdBelongsToUser(photo.publicId, userId) || !cloudinarySignatureValid(photo)) {
 			throw new InvalidPhotoError(photo.publicId);
 		}
 	}
 
-	const resolvedInput: PublishReview = {
-		...input,
-		items: (await resolveItemLookupOthers(input.items)) as PublishReview['items'],
-		placeRatings: await Promise.all(input.placeRatings.map(resolveRatingCustomCriteria))
-	};
+	// Declared outside the try so the catch below can still reach it if resolution itself is
+	// what fails — findOrCreateLookupEntry/findOrCreateCriteriaOption push into it as each call
+	// succeeds, independently of whether a sibling call in the same batch goes on to fail.
+	const created: CreatedEntries = { lookups: [], criteria: [] };
 
-	const mediaIdByPublicId = await findExistingMediaIds(resolvedInput.photos.map((p) => p.publicId));
+	try {
+		const resolvedInput: PublishReview = {
+			...input,
+			items: (await resolveItemLookupOthers(input.items, created)) as PublishReview['items'],
+			placeRatings: await Promise.all(
+				input.placeRatings.map((r) => resolveRatingCustomCriteria(r, created))
+			)
+		};
 
-	const rows = buildReviewRows(resolvedInput, {
-		userId,
-		now: new Date(),
-		categories,
-		mediaIdByPublicId
-	});
-
-	const mediaRowsWithUrl = rows.newMedia.map(({ version, ...row }) => ({
-		...row,
-		// quality/fetch_format 'auto' ask Cloudinary to serve a compressed, next-gen format
-		// (WebP/AVIF) per-request based on the requesting browser — the stored original is
-		// untouched, this only affects what gets delivered. format still pins the URL's file
-		// extension; f_auto overrides the actual served format regardless of that extension.
-		url: cloudinary.url(row.storageKey, {
-			secure: true,
-			version,
-			format: row.format ?? undefined,
-			fetch_format: 'auto',
-			quality: 'auto'
-		})
-	}));
-
-	const statements: BatchItem<'pg'>[] = [];
-	if (rows.newPlace) {
-		const p = rows.newPlace;
-		statements.push(
-			db
-				.insert(places)
-				.values({
-					id: p.id,
-					placeCategoryId: p.placeCategoryId,
-					name: p.name,
-					location: sql`ST_GeogFromText(${pointWkt(p.lat, p.lng)})`,
-					addressLine1: p.addressLine1,
-					city: p.city,
-					countryCode: p.countryCode,
-					createdByUserId: p.createdByUserId,
-					verificationStatus: 'unverified'
-				})
-				.onConflictDoNothing()
+		const mediaIdByPublicId = await findExistingMediaIds(
+			resolvedInput.photos.map((p) => p.publicId)
 		);
-	}
-	statements.push(db.insert(reviews).values(rows.review).onConflictDoNothing());
-	if (mediaRowsWithUrl.length) {
-		statements.push(db.insert(mediaFiles).values(mediaRowsWithUrl).onConflictDoNothing());
-	}
-	statements.push(db.insert(reviewItems).values(rows.items).onConflictDoNothing());
-	if (rows.foodDetails.length) {
-		statements.push(db.insert(foodItemDetails).values(rows.foodDetails).onConflictDoNothing());
-	}
-	if (rows.itemFoodTypes.length) {
-		statements.push(
-			db.insert(reviewItemFoodTypes).values(rows.itemFoodTypes).onConflictDoNothing()
-		);
-	}
-	if (rows.drinkDetails.length) {
-		statements.push(db.insert(drinkItemDetails).values(rows.drinkDetails).onConflictDoNothing());
-	}
-	statements.push(
-		db.insert(reviewCategoryRatings).values(rows.categoryRatings).onConflictDoNothing()
-	);
-	if (rows.ratingCriteria.length) {
-		statements.push(
-			db.insert(reviewRatingCriteria).values(rows.ratingCriteria).onConflictDoNothing()
-		);
-	}
-	if (rows.reviewMedia.length) {
-		statements.push(db.insert(reviewMedia).values(rows.reviewMedia).onConflictDoNothing());
-	}
 
-	await db.batch(statements as [BatchItem<'pg'>, ...BatchItem<'pg'>[]]);
+		const rows = buildReviewRows(resolvedInput, {
+			userId,
+			now: new Date(),
+			categories,
+			mediaIdByPublicId
+		});
 
-	return input.reviewId;
+		const mediaRowsWithUrl = rows.newMedia.map(({ version, ...row }) => ({
+			...row,
+			url: deliveryUrl(row.storageKey, version, row.format ?? null),
+			// A brand new row goes straight to 'active' — no publish without it, unlike a row
+			// reused below that may have been sitting at 'pending' since upload time.
+			mediaStatus: 'active' as const
+		}));
+
+		const statements: BatchItem<'pg'>[] = [];
+		if (rows.newPlace) {
+			const p = rows.newPlace;
+			statements.push(
+				db
+					.insert(places)
+					.values({
+						id: p.id,
+						placeCategoryId: p.placeCategoryId,
+						name: p.name,
+						location: sql`ST_GeogFromText(${pointWkt(p.lat, p.lng)})`,
+						addressLine1: p.addressLine1,
+						city: p.city,
+						countryCode: p.countryCode,
+						createdByUserId: p.createdByUserId,
+						verificationStatus: 'unverified'
+					})
+					.onConflictDoNothing()
+			);
+		}
+		statements.push(db.insert(reviews).values(rows.review).onConflictDoNothing());
+		if (mediaRowsWithUrl.length) {
+			statements.push(db.insert(mediaFiles).values(mediaRowsWithUrl).onConflictDoNothing());
+		}
+		if (resolvedInput.photos.length) {
+			// Flips any row already sitting at 'pending' (registered at upload time, see
+			// /api/photos/register) to 'active' now that its review has actually published — the
+			// insert above already writes a brand new row as 'active', so this only ever matters
+			// for one reused via findExistingMediaIds. Keeps findOrphanedAssets' pending-vs-active
+			// distinction honest: a published photo must never still read as merely "pending".
+			// Excludes 'deleted' as a last line of defense: findExistingMediaIds above already
+			// rejected the whole publish if a row read as 'deleted' at that point, but this guards
+			// the narrow remaining window where the cleanup job's claim (claimOrphanForDeletion)
+			// could still land in between that read and this statement committing — without this,
+			// such a race would resurrect a row cleanup has already committed to destroying.
+			statements.push(
+				db
+					.update(mediaFiles)
+					.set({ mediaStatus: 'active' })
+					.where(
+						and(
+							inArray(
+								mediaFiles.storageKey,
+								resolvedInput.photos.map((p) => p.publicId)
+							),
+							ne(mediaFiles.mediaStatus, 'deleted')
+						)
+					)
+			);
+		}
+		statements.push(db.insert(reviewItems).values(rows.items).onConflictDoNothing());
+		if (rows.foodDetails.length) {
+			statements.push(db.insert(foodItemDetails).values(rows.foodDetails).onConflictDoNothing());
+		}
+		if (rows.itemFoodTypes.length) {
+			statements.push(
+				db.insert(reviewItemFoodTypes).values(rows.itemFoodTypes).onConflictDoNothing()
+			);
+		}
+		if (rows.drinkDetails.length) {
+			statements.push(db.insert(drinkItemDetails).values(rows.drinkDetails).onConflictDoNothing());
+		}
+		if (rows.categoryRatings.length) {
+			statements.push(
+				db.insert(reviewCategoryRatings).values(rows.categoryRatings).onConflictDoNothing()
+			);
+		}
+		if (rows.ratingCriteria.length) {
+			statements.push(
+				db.insert(reviewRatingCriteria).values(rows.ratingCriteria).onConflictDoNothing()
+			);
+		}
+		if (rows.reviewMedia.length) {
+			statements.push(db.insert(reviewMedia).values(rows.reviewMedia).onConflictDoNothing());
+		}
+
+		await db.batch(statements as [BatchItem<'pg'>, ...BatchItem<'pg'>[]]);
+
+		return input.reviewId;
+	} catch (err) {
+		await rollbackCreatedEntries(created);
+		throw err;
+	}
 }

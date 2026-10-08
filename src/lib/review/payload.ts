@@ -47,6 +47,18 @@ function nullIfBlank(s: string): string | null {
 	return trimmed === '' ? null : trimmed;
 }
 
+/** `draft.visitedAt` is a native date input's raw value — '' once the user clears the field.
+ *  `new Date('').toISOString()` throws a RangeError (Invalid Date), and this is called from a
+ *  `$derived` on every draft change, so that throw would break the wizard's render the instant
+ *  the field is cleared. Passing the raw string through on parse failure instead lets
+ *  `publishReviewSchema`'s `z.iso.datetime()` reject it the normal way — a controlled
+ *  validation failure, not an exception — while Step1Visit's own emptiness check (see
+ *  validateStep in +page.svelte) is what actually stops the user getting this far. */
+function toIsoVisitedAt(raw: string): string {
+	const date = new Date(raw);
+	return Number.isNaN(date.getTime()) ? raw : date.toISOString();
+}
+
 /** Drops a rating the person never actually interacted with, so an empty star + no tags
  *  entry for every seeded category doesn't get sent as a wall of meaningless rows. */
 function usedRatings(ratings: CategoryRatingDraft[]): PublishReview['placeRatings'] {
@@ -138,7 +150,7 @@ export function buildPublishPayload(draft: ReviewDraftSnapshot): PublishReview {
 		reviewType: REVIEW_TYPE_MAP[draft.reviewType],
 		visitType: draft.visitType,
 		mealType: hasDish(draft.reviewType) ? draft.mealType : null,
-		visitedAt: new Date(draft.visitedAt).toISOString(),
+		visitedAt: toIsoVisitedAt(draft.visitedAt),
 		place,
 		title: nullIfBlank(draft.title),
 		description: nullIfBlank(draft.description),

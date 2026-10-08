@@ -6,6 +6,16 @@ import { places } from '#lib/server/db/schema/index.ts';
 import { pointWkt } from '#lib/server/reviews.ts';
 import type { RequestHandler } from './$types';
 
+/** `url.searchParams.get` returns `null` for a missing param — `Number(null)` is `0`, a
+ *  perfectly finite (and in-range) coordinate, so a naive `Number(...)` + `isFinite` check
+ *  can't tell "absent" from "0,0". Returns null for missing/blank/non-numeric/out-of-range
+ *  input, so the caller can treat all of those the same: no usable origin. */
+function parseCoord(raw: string | null, min: number, max: number): number | null {
+	if (!raw) return null;
+	const n = Number(raw);
+	return Number.isFinite(n) && n >= min && n <= max ? n : null;
+}
+
 /** Typeahead for the review wizard's place picker. Signed-in only; ordered by distance when
  *  the browser supplies its coordinates, which also doubles as the "320 m away" hint that
  *  discourages creating a duplicate place for somewhere that's already listed. */
@@ -15,9 +25,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
 	if (q.length < 2) return json([]);
 
-	const lat = Number(url.searchParams.get('lat'));
-	const lng = Number(url.searchParams.get('lng'));
-	const hasOrigin = Number.isFinite(lat) && Number.isFinite(lng);
+	const lat = parseCoord(url.searchParams.get('lat'), -90, 90);
+	const lng = parseCoord(url.searchParams.get('lng'), -180, 180);
+	const hasOrigin = lat !== null && lng !== null;
 	const origin = hasOrigin ? sql`ST_GeogFromText(${pointWkt(lat, lng)})` : null;
 
 	const rows = await db

@@ -19,7 +19,7 @@
 <section class="flex flex-col gap-3">
 	<h3 class="font-display text-lg font-semibold text-ink">Who can see this?</h3>
 	<div
-		class="flex flex-col gap-2 rounded-card border border-line bg-surface"
+		class="flex flex-col overflow-hidden rounded-card border border-line bg-surface"
 		role="radiogroup"
 		aria-label="Visibility"
 	>
@@ -29,7 +29,9 @@
 				type="button"
 				role="radio"
 				aria-checked={selected}
-				class={`flex items-center justify-between gap-3 p-4 text-left transition-colors ${
+				class={`flex items-center justify-between gap-3 p-4 text-left -outline-offset-2 transition-colors ${
+					i === 0 ? 'rounded-t-card' : ''
+				} ${i === options.length - 1 ? 'rounded-b-card' : ''} ${
 					i > 0 ? 'border-t border-line' : ''
 				} ${selected ? 'bg-accent-soft' : ''}`}
 				onclick={() => (value = opt.value)}

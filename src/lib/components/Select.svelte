@@ -1,5 +1,6 @@
 <script lang="ts" generics="T extends string | number">
 	import Icon from './Icon.svelte';
+	import { portal } from './portal.ts';
 
 	let {
 		value = $bindable(),
@@ -31,6 +32,8 @@
 	let open = $state(false);
 	let wrapperEl: HTMLDivElement | undefined;
 	let triggerEl: HTMLButtonElement | undefined;
+	let optionEls: (HTMLButtonElement | undefined)[] = [];
+	let otherButtonEl = $state<HTMLButtonElement | undefined>(undefined);
 	let panelStyle = $state('');
 	// Top of the app header's clip line, in viewport px — the point the panel should visually
 	// scroll up behind, same as any other scrolled content would.
@@ -49,6 +52,9 @@
 	// in the draft while its input disappeared from view until re-triggered from the dropdown.
 	let enteringOther = $state(!!otherValue?.trim());
 	let otherInputEl = $state<HTMLInputElement | undefined>(undefined);
+	// Remembers the real option that was selected (if any) before the user opened "Other…", so
+	// Cancel can restore it instead of leaving `value` cleared.
+	let valueBeforeOther: T | null = null;
 
 	// `fixed` + a measured rect, the same fix InfoTooltip needed — this panel can open from
 	// inside the wizard's scrolling center column, and an `overflow-y: auto` ancestor forces
@@ -64,6 +70,37 @@
 	function openPanel() {
 		syncPanelPosition();
 		open = true;
+		// The panel is portaled to the end of <body> — without this, focus stays on the trigger
+		// and the next Tab lands on whatever follows it in the wizard, nowhere near the options
+		// that just appeared at the other end of the DOM. The options don't exist this tick yet
+		// (same reason startOther below needs requestAnimationFrame), so wait a frame.
+		requestAnimationFrame(() => {
+			const index = Math.max(
+				0,
+				options.findIndex((o) => o.value === value)
+			);
+			optionEls[index]?.focus();
+		});
+	}
+
+	/** Moves focus among the option buttons (and the trailing "Other…" one, if present) by
+	 *  Arrow Up/Down, wrapping at either end — the only keyboard navigation this listbox had
+	 *  none of before. Selecting still happens via each button's own native Enter/Space click. */
+	function focusOptionAt(index: number) {
+		const total = options.length + (allowOther ? 1 : 0);
+		const wrapped = ((index % total) + total) % total;
+		if (wrapped < options.length) optionEls[wrapped]?.focus();
+		else otherButtonEl?.focus();
+	}
+
+	function onOptionKeydown(e: KeyboardEvent, index: number) {
+		if (e.key === 'ArrowDown') {
+			e.preventDefault();
+			focusOptionAt(index + 1);
+		} else if (e.key === 'ArrowUp') {
+			e.preventDefault();
+			focusOptionAt(index - 1);
+		}
 	}
 
 	// `fixed` is positioned against the viewport, not the trigger, so scrolling the wizard's
@@ -87,6 +124,7 @@
 		otherValue = null;
 		enteringOther = false;
 		close();
+		triggerEl?.focus();
 	}
 
 	function close() {
@@ -96,6 +134,7 @@
 	function cancelOther() {
 		otherValue = null;
 		enteringOther = false;
+		value = valueBeforeOther;
 	}
 
 	// Only the dropdown list auto-closes on an outside click — the "Other" field stays open
@@ -106,11 +145,15 @@
 	}
 
 	function onWindowKeydown(e: KeyboardEvent) {
-		if (open && e.key === 'Escape') close();
+		if (open && e.key === 'Escape') {
+			close();
+			triggerEl?.focus();
+		}
 	}
 
 	function startOther() {
 		open = false;
+		valueBeforeOther = value;
 		value = null;
 		enteringOther = true;
 		// The input doesn't exist yet this tick (it's behind {#if enteringOther}); focus it
@@ -175,21 +218,28 @@
 	     elements are normally positioned (and clipped) against the viewport itself, ignoring
 	     ordinary ancestor overflow — the same escape hatch this panel relies on to get past the
 	     wizard column's own overflow-y clipping. A `transform` on this wrapper makes it the
-	     containing block for `fixed` descendants instead, so its own clip-path now applies. -->
+	     containing block for `fixed` descendants instead, so its own clip-path now applies.
+	     `portal` (see portal.ts) also moves this wrapper itself to `<body>`, the same fix
+	     InfoTooltip needed — otherwise an ancestor that later gains its own CSS transform (e.g.
+	     the wizard rail's collapse animation) would become the containing block for *this*
+	     wrapper's `fixed` positioning instead of the viewport, re-trapping it behind that
+	     ancestor's clipping. -->
 	<div
+		use:portal
 		class="pointer-events-none fixed inset-0 z-50"
 		style={`clip-path: inset(${clipTop}px 0 0 0); transform: translateZ(0);`}
 	>
 		<ul
 			role="listbox"
 			aria-label={groupLabel}
-			class="pointer-events-auto fixed max-h-60 overflow-y-auto rounded-input border border-line bg-surface p-1 shadow-card-lg"
+			class="no-scrollbar pointer-events-auto fixed max-h-60 overflow-y-auto rounded-input border border-line bg-surface p-1 shadow-card-lg"
 			style={panelStyle}
 		>
-			{#each options as opt (opt.value)}
+			{#each options as opt, i (opt.value)}
 				{@const selected = opt.value === value}
 				<li>
 					<button
+						bind:this={optionEls[i]}
 						type="button"
 						role="option"
 						aria-selected={selected}
@@ -199,6 +249,7 @@
 								: 'text-ink hover:bg-sunken'
 						}`}
 						onclick={() => choose(opt.value)}
+						onkeydown={(e) => onOptionKeydown(e, i)}
 					>
 						<span class="truncate">{opt.label}</span>
 						{#if selected}<Icon name="check" size={14} weight={2.5} class="shrink-0" />{/if}
@@ -208,9 +259,11 @@
 			{#if allowOther}
 				<li class="mt-1 border-t border-line pt-1">
 					<button
+						bind:this={otherButtonEl}
 						type="button"
 						class="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left text-sm text-ink-3 hover:bg-sunken"
 						onclick={startOther}
+						onkeydown={(e) => onOptionKeydown(e, options.length)}
 					>
 						<Icon name="plus" size={14} weight={2.5} class="shrink-0" />
 						Other…

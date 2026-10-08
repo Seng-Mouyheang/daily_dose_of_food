@@ -79,6 +79,11 @@ export type LookupKind = keyof typeof LOOKUP_TABLES;
 export interface LookupEntry {
 	id: number;
 	name: string;
+	/** True if this call inserted the row (vs. finding one an earlier request already created).
+	 *  Callers that need the resolution to only "stick" once some later step succeeds use this
+	 *  to know which rows are theirs to delete on rollback — a reused row must never be deleted
+	 *  just because *this* request's later step failed. */
+	created: boolean;
 }
 
 /**
@@ -106,7 +111,7 @@ export async function findOrCreateLookupEntry(
 		.values({ name, slug })
 		.onConflictDoNothing({ target: table.slug })
 		.returning({ id: table.id, name: table.name });
-	if (inserted) return inserted;
+	if (inserted) return { ...inserted, created: true };
 
 	const [existing] = await db
 		.select({ id: table.id, name: table.name })
@@ -114,19 +119,33 @@ export async function findOrCreateLookupEntry(
 		.where(eq(table.slug, slug))
 		.limit(1);
 	if (!existing) throw new Error('Could not resolve this option. Try again.');
-	return existing;
+	return { ...existing, created: false };
+}
+
+/** Best-effort cleanup for a lookup row this request created but never ended up using (the
+ *  publish it was resolved for failed afterward). Safe to call on a row other rows may have
+ *  started referencing since — the FK's `onDelete: 'restrict'`/default RESTRICT makes the
+ *  delete a no-op in that case rather than cascading damage. */
+export async function deleteUnusedLookupEntry(kind: LookupKind, id: number): Promise<void> {
+	const table = LOOKUP_TABLES[kind];
+	await db
+		.delete(table)
+		.where(eq(table.id, id))
+		.catch(() => {});
 }
 
 export interface CriteriaOptionEntry {
 	id: number;
 	label: string;
+	/** See LookupEntry.created. */
+	created: boolean;
 }
 
 /**
  * Resolves a user-typed tag (from a rating category's "+" add pill) to a real
  * rating_criteria_options row, creating one if no match exists yet. Mirrors
  * findOrCreateLookupEntry above, but dedupes on the table's own unique constraint —
- * (ratingCategoryId, label) — since this table has no slug column of its own.
+ * (ratingCategoryId, label, sentiment) — since this table has no slug column of its own.
  */
 export async function findOrCreateCriteriaOption(
 	ratingCategoryId: number,
@@ -142,10 +161,14 @@ export async function findOrCreateCriteriaOption(
 		.insert(ratingCriteriaOptions)
 		.values({ ratingCategoryId, label, sentiment })
 		.onConflictDoNothing({
-			target: [ratingCriteriaOptions.ratingCategoryId, ratingCriteriaOptions.label]
+			target: [
+				ratingCriteriaOptions.ratingCategoryId,
+				ratingCriteriaOptions.label,
+				ratingCriteriaOptions.sentiment
+			]
 		})
 		.returning({ id: ratingCriteriaOptions.id, label: ratingCriteriaOptions.label });
-	if (inserted) return inserted;
+	if (inserted) return { ...inserted, created: true };
 
 	const [existing] = await db
 		.select({ id: ratingCriteriaOptions.id, label: ratingCriteriaOptions.label })
@@ -153,10 +176,20 @@ export async function findOrCreateCriteriaOption(
 		.where(
 			and(
 				eq(ratingCriteriaOptions.ratingCategoryId, ratingCategoryId),
-				eq(ratingCriteriaOptions.label, label)
+				eq(ratingCriteriaOptions.label, label),
+				eq(ratingCriteriaOptions.sentiment, sentiment)
 			)
 		)
 		.limit(1);
 	if (!existing) throw new Error('Could not resolve this tag. Try again.');
-	return existing;
+	return { ...existing, created: false };
+}
+
+/** Best-effort cleanup for a criteria option this request created but never ended up using
+ *  (the publish it was resolved for failed afterward). See deleteUnusedLookupEntry. */
+export async function deleteUnusedCriteriaOption(id: number): Promise<void> {
+	await db
+		.delete(ratingCriteriaOptions)
+		.where(eq(ratingCriteriaOptions.id, id))
+		.catch(() => {});
 }

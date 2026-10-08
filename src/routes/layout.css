@@ -130,6 +130,19 @@ body {
 	}
 }
 
+/* Hides the scrollbar on an element opted in via `.no-scrollbar` (the review wizard's three
+ * scrolling columns) — scrolling (wheel/trackpad/touch/drag) still works as normal via
+ * overflow:auto on the element; only the visible track/thumb is removed. scrollbar-width
+ * covers Firefox, ::-webkit-scrollbar covers Chromium/Safari. Scoped rather than applied to `*`
+ * so other scrollable areas elsewhere in the app keep their normal scrollbar affordance. */
+.no-scrollbar {
+	scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

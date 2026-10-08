@@ -84,6 +84,22 @@ export function publicIdBelongsToUser(publicId: string, userId: string): boolean
 	return publicId.startsWith(`${uploadFolder(userId)}/`);
 }
 
+/** The delivery URL media_files.url stores for a Cloudinary asset — shared by publishReview and
+ *  the upload-registration endpoint so both ever only reconstruct it one way. quality/fetch_format
+ *  'auto' ask Cloudinary to serve a compressed, next-gen format (WebP/AVIF) per-request based on
+ *  the requesting browser — the stored original is untouched, this only affects what gets
+ *  delivered. format still pins the URL's file extension; f_auto overrides the actual served
+ *  format regardless of that extension. */
+export function deliveryUrl(storageKey: string, version: number, format: string | null): string {
+	return cloudinary.url(storageKey, {
+		secure: true,
+		version,
+		format: format ?? undefined,
+		fetch_format: 'auto',
+		quality: 'auto'
+	});
+}
+
 /** Lists every asset Cloudinary has under UPLOAD_ROOT_PREFIX (i.e. every user's upload folder),
  *  paginating through next_cursor — for photoCleanup.ts to diff against media_files and find
  *  ones no review ever ended up referencing. Admin API call, not scoped to one user. */

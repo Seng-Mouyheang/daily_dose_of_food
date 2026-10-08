@@ -1,0 +1,2 @@
+ALTER TABLE "rating_criteria_options" DROP CONSTRAINT "uq_category_criteria";--> statement-breakpoint
+ALTER TABLE "rating_criteria_options" ADD CONSTRAINT "uq_category_criteria" UNIQUE("rating_category_id","label","sentiment");

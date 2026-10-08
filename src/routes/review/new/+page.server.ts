@@ -2,7 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
 import { requireUser } from '#lib/server/auth.ts';
 import { getReviewFormLookups } from '#lib/server/lookups.ts';
-import { InvalidPhotoError, publishReview } from '#lib/server/reviews.ts';
+import { InvalidPhotoError, publishReview, ReviewOwnershipError } from '#lib/server/reviews.ts';
 import { publishReviewSchema } from '#lib/review/schema.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -29,7 +29,15 @@ export const actions = {
 
 		const parsed = publishReviewSchema.safeParse(parsedJson);
 		if (!parsed.success) {
-			return fail(400, { errors: z.flattenError(parsed.error) });
+			// +page.svelte only ever renders `form?.message` — without one here, a rejected
+			// payload (an item name past its 200-char schema limit when the input itself has no
+			// maxlength, a 11th photo from a race between two concurrent uploads, ...) left the
+			// user clicking Publish with zero visible feedback. `errors` stays too, for whenever
+			// this gets field-level messages.
+			return fail(400, {
+				message: 'Something about this review needs fixing before it can publish.',
+				errors: z.flattenError(parsed.error)
+			});
 		}
 
 		const { categories } = await getReviewFormLookups();
@@ -38,7 +46,7 @@ export const actions = {
 		try {
 			reviewId = await publishReview(user.id, parsed.data, categories);
 		} catch (err) {
-			if (err instanceof InvalidPhotoError) {
+			if (err instanceof InvalidPhotoError || err instanceof ReviewOwnershipError) {
 				return fail(400, { message: err.message });
 			}
 			throw err;

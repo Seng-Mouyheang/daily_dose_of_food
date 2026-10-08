@@ -2,16 +2,25 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Stars from '#lib/components/Stars.svelte';
 	import VisibilityPicker from './VisibilityPicker.svelte';
-	import { formatVisitDate, priceWithTax } from '#lib/review/format.ts';
+	import { formatVisitDate, priceWithTax, resolveTypeLabel } from '#lib/review/format.ts';
 	import type { CategoryRatingDraft, ItemDraft, ReviewDraft } from '#lib/review/draft.svelte.ts';
-	import type { RatingCategoryView } from '#lib/review/categories.ts';
+	import { placeCategoriesFor, type RatingCategoryView } from '#lib/review/categories.ts';
 
 	let {
 		draft,
 		categories,
+		cuisineTypes,
+		foodTypes,
+		drinkTypes,
 		onEdit
-	}: { draft: ReviewDraft; categories: RatingCategoryView[]; onEdit: (step: number) => void } =
-		$props();
+	}: {
+		draft: ReviewDraft;
+		categories: RatingCategoryView[];
+		cuisineTypes: { id: number; name: string }[];
+		foodTypes: { id: number; name: string }[];
+		drinkTypes: { id: number; name: string }[];
+		onEdit: (step: number) => void;
+	} = $props();
 
 	const visitLabel: Record<string, string> = {
 		dine_in: 'Dine-in',
@@ -36,8 +45,18 @@
 
 	function itemSummary(item: ItemDraft) {
 		const hasPrice = parseFloat(item.price) > 0;
+		const typeLabel =
+			item.itemType === 'food'
+				? [
+						resolveTypeLabel(item.cuisineTypeId, item.cuisineTypeOther, cuisineTypes),
+						resolveTypeLabel(item.foodTypeIds[0] ?? null, item.foodTypeOther, foodTypes)
+					]
+						.filter((l): l is string => Boolean(l))
+						.join(' · ') || null
+				: resolveTypeLabel(item.drinkTypeId, item.drinkTypeOther, drinkTypes);
 		return {
 			name: item.itemName || `Untitled ${item.itemType}`,
+			typeLabel,
 			price: hasPrice ? item.price : null,
 			taxPercent: item.taxPercent,
 			total: priceWithTax(item.price, item.taxPercent)
@@ -49,11 +68,23 @@
 		category: RatingCategoryView;
 	}
 
-	// All ratings across place + both items, each paired with the category that defines its
-	// label/icon/tag options — same shape ReviewCard builds for the tag list, reused here for
-	// the per-category star rows and the signed tag chips.
-	const allRatings = $derived.by((): RatingWithCategory[] => {
-		const combined = [...draft.placeRatings, ...draft.dish.ratings, ...draft.drink.ratings];
+	// draft.placeRatings/dish.ratings/drink.ratings only ever grow (ensureRating in Step 2 seeds
+	// an entry but never removes one), so switching visit type away from one that had Amenities
+	// applicable, or switching review type away from "Both", leaves a stale rating sitting in
+	// the array for a category/item that's no longer in play. The server drops exactly these
+	// when publishing — applicablePlaceCategoryIds/applicableItemCategoryIds in reviews.ts, and
+	// payload.ts only ever sends whichever item(s) draft.hasDish/draft.hasBev say are active — so
+	// this mirrors both filters to keep the review-before-you-publish summary honest about what's
+	// actually sent.
+	const applicableRatings = $derived.by((): RatingWithCategory[] => {
+		const placeCategoryIds = new Set(
+			placeCategoriesFor(categories, draft.visitType).map((c) => c.id)
+		);
+		const combined = [
+			...draft.placeRatings.filter((r) => placeCategoryIds.has(r.ratingCategoryId)),
+			...(draft.hasDish ? draft.dish.ratings : []),
+			...(draft.hasBev ? draft.drink.ratings : [])
+		];
 		const out: RatingWithCategory[] = [];
 		for (const rating of combined) {
 			const category = categories.find((c) => c.id === rating.ratingCategoryId);
@@ -61,6 +92,19 @@
 		}
 		return out;
 	});
+
+	// All applicable ratings with an actual star value — Step 2 seeds a null-valued entry for
+	// every applicable category up front, so one the user never actually rated still has an
+	// array entry; skip it rather than showing an empty-stars row for a category they never
+	// touched.
+	const allRatings = $derived(applicableRatings.filter((r) => r.rating.ratingValue !== null));
+
+	// Same as allRatings, but also keeps tag-only ratings (starred or not) — payload.ts and
+	// ReviewCard both publish/display a category's tags independently of whether it was ever
+	// starred, so the tag chips here must match rather than silently dropping unstarred ones.
+	const taggedRatings = $derived(
+		applicableRatings.filter((r) => r.rating.criteriaOptionIds.length > 0)
+	);
 
 	const overallRating = $derived.by(() => {
 		const values = allRatings.flatMap((r) =>
@@ -71,12 +115,12 @@
 	});
 
 	const positiveTags = $derived(
-		allRatings.flatMap(({ rating, category }) =>
+		taggedRatings.flatMap(({ rating, category }) =>
 			category.positive.filter((o) => rating.criteriaOptionIds.includes(o.id)).map((o) => o.label)
 		)
 	);
 	const negativeTags = $derived(
-		allRatings.flatMap(({ rating, category }) =>
+		taggedRatings.flatMap(({ rating, category }) =>
 			category.negative.filter((o) => rating.criteriaOptionIds.includes(o.id)).map((o) => o.label)
 		)
 	);
@@ -130,18 +174,21 @@
 
 		{#each draft.items as item (item.itemType)}
 			{@const summary = itemSummary(item)}
-			<div class="mt-3 flex items-baseline justify-between gap-2">
+			<div class="mt-3 flex items-start justify-between gap-2">
 				<div>
 					<p class="font-semibold text-ink">{summary.name}</p>
-					{#if summary.price}
+					{#if summary.typeLabel}
+						<p class="text-xs text-ink-3">{summary.typeLabel}</p>
+					{/if}
+				</div>
+				{#if summary.price}
+					<div class="shrink-0 text-right">
+						<p class="font-semibold text-ink tabular-nums">${summary.total.toFixed(2)}</p>
 						<p class="text-xs text-ink-3">
 							${summary.price}{#if summary.taxPercent}
 								+ {summary.taxPercent}% tax{/if}
 						</p>
-					{/if}
-				</div>
-				{#if summary.price}
-					<p class="shrink-0 font-semibold text-ink tabular-nums">${summary.total.toFixed(2)}</p>
+					</div>
 				{/if}
 			</div>
 		{/each}
