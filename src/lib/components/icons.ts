@@ -40,7 +40,20 @@ export const ICONS = {
 	bellN: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 	cloud:
 		'<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5H7z"/><path d="M9.5 13.5l2 2 3.5-3.5"/>',
-	info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.8" r=".2" fill="currentColor" stroke-width="2.4"/>'
+	info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.8" r=".2" fill="currentColor" stroke-width="2.4"/>',
+	comment: '<path d="M20.5 12a8.5 8.5 0 0 1-12.3 7.6L3.5 20.5l1-4.3A8.5 8.5 0 1 1 20.5 12z"/>',
+	bookmark: '<path d="M6.5 3.5h11v17l-5.5-4-5.5 4z"/>',
+	share:
+		'<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 13.2l7.6 4.6M15.8 6.2l-7.6 4.6"/>',
+	/** Three dots. Filled with the stroke switched off, rather than stroked — at r=1.3 a stroked
+	 *  ring at Icon.svelte's default 1.8 weight fills in as a smudge. */
+	more: '<circle cx="5" cy="12" r="1.3" fill="currentColor" stroke-width="0"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke-width="0"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke-width="0"/>',
+	/** Navigation arrow — the "Directions" action on a place. */
+	nav: '<path d="M3 11l18-8-8 18-2-8z"/>',
+	home: '<path d="M3.5 10.5L12 4l8.5 6.5V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/>',
+	compass: '<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>',
+	user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+	send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>'
 } as const;
 
 export type IconName = keyof typeof ICONS;
