@@ -36,6 +36,11 @@
 		canLike?: boolean;
 	} = $props();
 
+	// A per-instance id for the share popover's anchor/target pair — not `reviewId`, which is
+	// app data, not a DOM identity: two cards for the same review (unlikely, but not ruled out
+	// by anything here) would otherwise fight over one `anchor-name` and one popover `id`.
+	const uid = $props.id();
+
 	/** The shape behind both the heart and the bookmark: PUT/DELETE depending on `on`, then
 	 *  either apply whatever the server settled on or roll back. `flip` and `rollback` own the
 	 *  optimistic state themselves — a like also carries a count, a save doesn't — so this stays
@@ -247,20 +252,20 @@
 		{/if}
 		<button
 			type="button"
-			popovertarget="share-{reviewId}"
+			popovertarget="share-{uid}"
 			class={`${buttonClass} text-ink-2 hover:text-ink`}
 			aria-label="Share"
-			style="anchor-name: --share-{reviewId}"
+			style="anchor-name: --share-{uid}"
 		>
 			<Icon name={copied ? 'check' : 'share'} />
 			{#if copied}<span class="text-xs font-medium">Link copied</span>{/if}
 		</button>
 		<div
 			bind:this={menu}
-			id="share-{reviewId}"
+			id="share-{uid}"
 			popover
 			class="anchored-menu anchored-menu-up min-w-44 rounded-input border border-line bg-surface p-1 text-sm text-ink shadow-card-lg"
-			style="position-anchor: --share-{reviewId}"
+			style="position-anchor: --share-{uid}"
 		>
 			<button type="button" class={itemClass} onclick={copyLink}>
 				<Icon name="link" size={16} />Copy link

@@ -15,11 +15,16 @@
 	let index = $state(0);
 
 	// Clamped rather than trusted: `photos` can shrink between renders (a moderated or
-	// cleaned-up media row), which would otherwise leave `index` pointing past the end.
-	const current = $derived(photos[Math.min(index, photos.length - 1)] ?? null);
+	// cleaned-up media row), which would otherwise leave `index` pointing past the end. Every
+	// other read of the position — the photo itself, its alt text, the active dot, the next
+	// step — goes through this one value, so they can never disagree about where "current" is.
+	// `Math.max(0, …)` keeps it in bounds even with no photos, though step() is never reachable
+	// there (the arrows only render when `photos.length > 1`).
+	const safeIndex = $derived(Math.max(0, Math.min(index, photos.length - 1)));
+	const current = $derived(photos[safeIndex] ?? null);
 
 	function step(delta: number) {
-		index = (index + delta + photos.length) % photos.length;
+		index = (safeIndex + delta + photos.length) % photos.length;
 	}
 
 	const controls: { dir: number; side: string; icon: IconName; label: string }[] = [
@@ -33,7 +38,7 @@
 		<div class="relative overflow-hidden rounded-card bg-sunken">
 			<img
 				src={current.url}
-				alt={current.caption ?? `${title} — photo ${index + 1} of ${photos.length}`}
+				alt={current.caption ?? `${title} — photo ${safeIndex + 1} of ${photos.length}`}
 				class="block aspect-4/3 w-full object-cover"
 			/>
 
@@ -54,9 +59,9 @@
 						<button
 							type="button"
 							aria-label={`Show photo ${i + 1}`}
-							aria-current={i === index ? 'true' : undefined}
+							aria-current={i === safeIndex ? 'true' : undefined}
 							onclick={() => (index = i)}
-							class="h-1.5 rounded-full transition-all {i === index
+							class="h-1.5 rounded-full transition-all {i === safeIndex
 								? 'w-4 bg-on-scrim'
 								: 'w-1.5 bg-on-scrim/60'}"
 						></button>
@@ -72,7 +77,8 @@
 						type="button"
 						aria-label={`Show photo ${i + 1}`}
 						onclick={() => (index = i)}
-						class="w-[88px] overflow-hidden rounded-input border-2 transition-opacity {i === index
+						class="w-[88px] overflow-hidden rounded-input border-2 transition-opacity {i ===
+						safeIndex
 							? 'border-accent opacity-100'
 							: 'border-transparent opacity-75'}"
 					>
