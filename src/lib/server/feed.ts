@@ -17,17 +17,22 @@
  *   objects. Everything here converts both before returning, so the types in review/card.ts are
  *   JSON-plain and no component has to remember that `overallRating` might be "4.5".
  */
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or } from 'drizzle-orm';
+import { error } from '@sveltejs/kit';
+import type { SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type {
 	FeedCategoryRating,
 	FeedItem,
 	FeedPhoto,
 	FeedReview,
 	ReviewCardTag,
+	ReviewComment,
 	Visibility
 } from '#lib/review/card.ts';
 import type { MonthItemRow, MonthlyStats, MonthReviewRow } from '#lib/review/stats.ts';
 import { summarizeMonth } from '#lib/review/stats.ts';
+import { z } from 'zod';
+import { requireUser } from './auth.ts';
 import { db } from './db/index.ts';
 import {
 	cuisineTypes,
@@ -40,8 +45,11 @@ import {
 	ratingCategories,
 	ratingCriteriaOptions,
 	reviewCategoryRatings,
+	reviewCommentLikes,
+	reviewComments,
 	reviewItemFoodTypes,
 	reviewItems,
+	reviewLikes,
 	reviewMedia,
 	reviewRatingCriteria,
 	reviews,
@@ -159,11 +167,45 @@ export async function getReviewSpine(reviewId: string) {
 
 type SpineRow = NonNullable<Awaited<ReturnType<typeof getReviewSpine>>>;
 
+/**
+ * Whether `viewerId` (null when signed out) may see — and so interact with — this review. Public
+ * and published is visible to everyone; anything else (a draft, hidden or removed by moderation,
+ * soft-deleted, or friends/private) only to its own author. The caller turns a `false` into a
+ * 404, the same response as "no such review", so a guessed id can't tell "private" from
+ * "doesn't exist". 'friends' still behaves like 'private' until follows exist.
+ *
+ * One definition, used by the review page and by every write against a review (like, comment),
+ * so a private review can never be liked or commented on by someone who guessed its id.
+ */
+export function canViewReview(
+	row: Pick<SpineRow, 'visibility' | 'reviewStatus' | 'deletedAt' | 'userId'>,
+	viewerId: string | null
+): boolean {
+	const isPublic =
+		row.visibility === 'public' && row.reviewStatus === 'published' && row.deletedAt === null;
+	return isPublic || (viewerId !== null && viewerId === row.userId);
+}
+
+/** The gate every write against a review repeats: a signed-in user, a valid id, and a review that
+ *  exists and that user may see. Auth comes first so a signed-out caller gets 401 whatever the id
+ *  is. Anything else is a 404, never a 403, so a guessed id can't reveal a private review. */
+export async function requireVisibleReview(locals: App.Locals, reviewId: string) {
+	const user = await requireUser(locals);
+	if (!z.uuid().safeParse(reviewId).success) error(404, 'Review not found');
+	const row = await getReviewSpine(reviewId);
+	if (!row || !canViewReview(row, user.id)) error(404, 'Review not found');
+	return { user, row };
+}
+
 interface Children {
 	photos: Map<string, FeedPhoto[]>;
 	items: Map<string, FeedItem[]>;
 	tags: Map<string, ReviewCardTag[]>;
 	categoryRatings: Map<string, FeedCategoryRating[]>;
+	likeCounts: Map<string, number>;
+	commentCounts: Map<string, number>;
+	/** Review ids the viewer has liked; empty when signed out. */
+	likedByViewer: Set<string>;
 }
 
 /**
@@ -175,100 +217,150 @@ interface Children {
  * of extra rows inside a batch that was already going out, and one code path means the feed
  * card and the review page can never disagree about what a review contains.
  */
-export async function getReviewChildren(reviewIds: string[]): Promise<Children> {
+export async function getReviewChildren(
+	reviewIds: string[],
+	viewerId: string | null = null
+): Promise<Children> {
 	if (reviewIds.length === 0) {
-		return { photos: new Map(), items: new Map(), tags: new Map(), categoryRatings: new Map() };
+		return {
+			photos: new Map(),
+			items: new Map(),
+			tags: new Map(),
+			categoryRatings: new Map(),
+			likeCounts: new Map(),
+			commentCounts: new Map(),
+			likedByViewer: new Set()
+		};
 	}
 
-	const [photoRows, itemRows, foodTypeRows, tagRows, ratingRows] = await db.batch([
-		// A media row can be soft-deleted by the orphan cleanup job (photoCleanup.ts) after the
-		// review is published, so filter on the file's own status rather than trusting the join.
-		db
-			.select({
-				reviewId: reviewMedia.reviewId,
-				url: mediaFiles.url,
-				width: mediaFiles.width,
-				height: mediaFiles.height,
-				caption: reviewMedia.caption
-			})
-			.from(reviewMedia)
-			.innerJoin(mediaFiles, eq(reviewMedia.mediaId, mediaFiles.id))
-			.where(
-				and(
-					inArray(reviewMedia.reviewId, reviewIds),
-					eq(mediaFiles.mediaStatus, 'active'),
-					isNull(mediaFiles.deletedAt)
+	// The viewer's own likes depend on who is looking, so they ride alongside the batch rather
+	// than inside it — a signed-out viewer skips the query entirely instead of sending a dummy
+	// id. Both are in flight at once.
+	const viewerLikes = viewerId
+		? db
+				.select({ reviewId: reviewLikes.reviewId })
+				.from(reviewLikes)
+				.where(and(eq(reviewLikes.userId, viewerId), inArray(reviewLikes.reviewId, reviewIds)))
+		: Promise.resolve([] as { reviewId: string }[]);
+
+	const [
+		[photoRows, itemRows, foodTypeRows, tagRows, ratingRows, likeCountRows, commentCountRows],
+		likedRows
+	] = await Promise.all([
+		db.batch([
+			// A media row can be soft-deleted by the orphan cleanup job (photoCleanup.ts) after the
+			// review is published, so filter on the file's own status rather than trusting the join.
+			db
+				.select({
+					reviewId: reviewMedia.reviewId,
+					url: mediaFiles.url,
+					width: mediaFiles.width,
+					height: mediaFiles.height,
+					caption: reviewMedia.caption
+				})
+				.from(reviewMedia)
+				.innerJoin(mediaFiles, eq(reviewMedia.mediaId, mediaFiles.id))
+				.where(
+					and(
+						inArray(reviewMedia.reviewId, reviewIds),
+						eq(mediaFiles.mediaStatus, 'active'),
+						isNull(mediaFiles.deletedAt)
+					)
 				)
-			)
-			// The cover leads the gallery wherever it is rendered, so order it first here and no
-			// consumer has to re-sort.
-			.orderBy(desc(reviewMedia.isCover), asc(reviewMedia.displayOrder)),
+				// The cover leads the gallery wherever it is rendered, so order it first here and no
+				// consumer has to re-sort.
+				.orderBy(desc(reviewMedia.isCover), asc(reviewMedia.displayOrder)),
 
-		db
-			.select({
-				id: reviewItems.id,
-				reviewId: reviewItems.reviewId,
-				itemType: reviewItems.itemType,
-				itemName: reviewItems.itemName,
-				price: reviewItems.price,
-				taxPercent: reviewItems.taxPercent,
-				portionSize: foodItemDetails.portionSize,
-				cuisineName: cuisineTypes.name,
-				sizeLabel: drinkItemDetails.sizeLabel,
-				sugarLevelPercent: drinkItemDetails.sugarLevelPercent,
-				iceLevel: drinkItemDetails.iceLevel,
-				drinkTypeName: drinkTypes.name
-			})
-			.from(reviewItems)
-			.leftJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
-			.leftJoin(cuisineTypes, eq(foodItemDetails.cuisineTypeId, cuisineTypes.id))
-			.leftJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
-			.leftJoin(drinkTypes, eq(drinkItemDetails.drinkTypeId, drinkTypes.id))
-			.where(inArray(reviewItems.reviewId, reviewIds))
-			.orderBy(asc(reviewItems.displayOrder)),
+			db
+				.select({
+					id: reviewItems.id,
+					reviewId: reviewItems.reviewId,
+					itemType: reviewItems.itemType,
+					itemName: reviewItems.itemName,
+					price: reviewItems.price,
+					taxPercent: reviewItems.taxPercent,
+					portionSize: foodItemDetails.portionSize,
+					cuisineName: cuisineTypes.name,
+					sizeLabel: drinkItemDetails.sizeLabel,
+					sugarLevelPercent: drinkItemDetails.sugarLevelPercent,
+					iceLevel: drinkItemDetails.iceLevel,
+					drinkTypeName: drinkTypes.name
+				})
+				.from(reviewItems)
+				.leftJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
+				.leftJoin(cuisineTypes, eq(foodItemDetails.cuisineTypeId, cuisineTypes.id))
+				.leftJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
+				.leftJoin(drinkTypes, eq(drinkItemDetails.drinkTypeId, drinkTypes.id))
+				.where(inArray(reviewItems.reviewId, reviewIds))
+				.orderBy(asc(reviewItems.displayOrder)),
 
-		// Food types are many-per-item, so they can't ride the item query without multiplying
-		// its rows. The card and review page only show the first, but fetching the set keeps
-		// that a display decision rather than one baked into SQL.
-		db
-			.select({
-				reviewItemId: reviewItemFoodTypes.reviewItemId,
-				name: foodTypes.name
-			})
-			.from(reviewItemFoodTypes)
-			.innerJoin(reviewItems, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
-			.innerJoin(foodTypes, eq(reviewItemFoodTypes.foodTypeId, foodTypes.id))
-			.where(inArray(reviewItems.reviewId, reviewIds)),
+			// Food types are many-per-item, so they can't ride the item query without multiplying
+			// its rows. The card and review page only show the first, but fetching the set keeps
+			// that a display decision rather than one baked into SQL.
+			db
+				.select({
+					reviewItemId: reviewItemFoodTypes.reviewItemId,
+					name: foodTypes.name
+				})
+				.from(reviewItemFoodTypes)
+				.innerJoin(reviewItems, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
+				.innerJoin(foodTypes, eq(reviewItemFoodTypes.foodTypeId, foodTypes.id))
+				.where(inArray(reviewItems.reviewId, reviewIds)),
 
-		db
-			.select({
-				reviewId: reviewCategoryRatings.reviewId,
-				label: ratingCriteriaOptions.label,
-				sentiment: ratingCriteriaOptions.sentiment
-			})
-			.from(reviewCategoryRatings)
-			.innerJoin(
-				reviewRatingCriteria,
-				eq(reviewRatingCriteria.reviewCategoryRatingId, reviewCategoryRatings.id)
-			)
-			.innerJoin(
-				ratingCriteriaOptions,
-				eq(reviewRatingCriteria.criteriaOptionId, ratingCriteriaOptions.id)
-			)
-			.where(inArray(reviewCategoryRatings.reviewId, reviewIds)),
+			db
+				.select({
+					reviewId: reviewCategoryRatings.reviewId,
+					label: ratingCriteriaOptions.label,
+					sentiment: ratingCriteriaOptions.sentiment
+				})
+				.from(reviewCategoryRatings)
+				.innerJoin(
+					reviewRatingCriteria,
+					eq(reviewRatingCriteria.reviewCategoryRatingId, reviewCategoryRatings.id)
+				)
+				.innerJoin(
+					ratingCriteriaOptions,
+					eq(reviewRatingCriteria.criteriaOptionId, ratingCriteriaOptions.id)
+				)
+				.where(inArray(reviewCategoryRatings.reviewId, reviewIds)),
 
-		db
-			.select({
-				reviewId: reviewCategoryRatings.reviewId,
-				categoryId: ratingCategories.id,
-				slug: ratingCategories.slug,
-				name: ratingCategories.name,
-				ratingValue: reviewCategoryRatings.ratingValue
-			})
-			.from(reviewCategoryRatings)
-			.innerJoin(ratingCategories, eq(reviewCategoryRatings.ratingCategoryId, ratingCategories.id))
-			.where(inArray(reviewCategoryRatings.reviewId, reviewIds))
-			.orderBy(asc(ratingCategories.displayOrder))
+			db
+				.select({
+					reviewId: reviewCategoryRatings.reviewId,
+					categoryId: ratingCategories.id,
+					slug: ratingCategories.slug,
+					name: ratingCategories.name,
+					ratingValue: reviewCategoryRatings.ratingValue
+				})
+				.from(reviewCategoryRatings)
+				.innerJoin(
+					ratingCategories,
+					eq(reviewCategoryRatings.ratingCategoryId, ratingCategories.id)
+				)
+				.where(inArray(reviewCategoryRatings.reviewId, reviewIds))
+				.orderBy(asc(ratingCategories.displayOrder)),
+
+			db
+				.select({ reviewId: reviewLikes.reviewId, n: count() })
+				.from(reviewLikes)
+				.where(inArray(reviewLikes.reviewId, reviewIds))
+				.groupBy(reviewLikes.reviewId),
+
+			// Joined to users like getComments, so the count matches the list it sits above.
+			db
+				.select({ reviewId: reviewComments.reviewId, n: count() })
+				.from(reviewComments)
+				.innerJoin(users, eq(reviewComments.userId, users.id))
+				.where(
+					and(
+						inArray(reviewComments.reviewId, reviewIds),
+						isNull(reviewComments.deletedAt),
+						isNull(users.deletedAt)
+					)
+				)
+				.groupBy(reviewComments.reviewId)
+		]),
+		viewerLikes
 	]);
 
 	const foodTypeByItem = groupBy(
@@ -318,7 +410,10 @@ export async function getReviewChildren(reviewIds: string[]): Promise<Children> 
 				name: r.name,
 				ratingValue: toNumber(r.ratingValue)
 			})
-		)
+		),
+		likeCounts: new Map(likeCountRows.map((r) => [r.reviewId, r.n])),
+		commentCounts: new Map(commentCountRows.map((r) => [r.reviewId, r.n])),
+		likedByViewer: new Set(likedRows.map((r) => r.reviewId))
 	};
 }
 
@@ -351,7 +446,10 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
 		photos: children.photos.get(row.id) ?? [],
 		items: children.items.get(row.id) ?? [],
 		tags: children.tags.get(row.id) ?? [],
-		categoryRatings: children.categoryRatings.get(row.id) ?? []
+		categoryRatings: children.categoryRatings.get(row.id) ?? [],
+		likeCount: children.likeCounts.get(row.id) ?? 0,
+		commentCount: children.commentCounts.get(row.id) ?? 0,
+		viewerHasLiked: children.likedByViewer.has(row.id)
 	};
 }
 
@@ -368,7 +466,7 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
  * trade at this size, and narrowing the index is a migration this milestone doesn't make.
  */
 export async function getForYouFeed(
-	opts: { limit?: number; cursor?: FeedCursor | null } = {}
+	opts: { limit?: number; cursor?: FeedCursor | null; viewerId?: string | null } = {}
 ): Promise<FeedPage> {
 	const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)), MAX_LIMIT);
 	const cursor = opts.cursor ?? null;
@@ -422,7 +520,10 @@ export async function getForYouFeed(
 		.limit(limit + 1);
 
 	const page = spine.slice(0, limit);
-	const children = await getReviewChildren(page.map((r) => r.id));
+	const children = await getReviewChildren(
+		page.map((r) => r.id),
+		opts.viewerId ?? null
+	);
 
 	const last = page.at(-1);
 	const nextCursor =
@@ -431,6 +532,90 @@ export async function getForYouFeed(
 			: null;
 
 	return { reviews: page.map((row) => assembleReview(row, children)), nextCursor };
+}
+
+/** A review's comments: top-level threads first (pinned, then newest), then their replies newest
+ *  first. The author join also drops comments by a since-deleted user, for the same reason the
+ *  feed drops their reviews. Paged by thread, not by row: at most 200 top-level comments, with
+ *  every reply to those, so a reply is never orphaned and a pinned comment never falls outside
+ *  the window. There is no paging UI yet, and an unbounded list on a popular review is the one
+ *  way this page could get slow. */
+export async function getComments(
+	reviewId: string,
+	viewerId: string | null
+): Promise<ReviewComment[]> {
+	const select = (scope: SQL | undefined) =>
+		db
+			.select({
+				id: reviewComments.id,
+				userId: reviewComments.userId,
+				parentId: reviewComments.parentId,
+				pinnedAt: reviewComments.pinnedAt,
+				photoUrl: mediaFiles.url,
+				photoWidth: mediaFiles.width,
+				photoHeight: mediaFiles.height,
+				body: reviewComments.body,
+				createdAt: reviewComments.createdAt,
+				editedAt: reviewComments.editedAt,
+				// Correlated subqueries keep this one round trip; each rides the likes table's PK,
+				// whose leading column is the comment id.
+				likeCount: sql<number>`(select count(*)::int from ${reviewCommentLikes} where ${reviewCommentLikes.commentId} = ${reviewComments.id})`,
+				viewerHasLiked: viewerId
+					? sql<boolean>`exists (select 1 from ${reviewCommentLikes} where ${reviewCommentLikes.commentId} = ${reviewComments.id} and ${reviewCommentLikes.userId} = ${viewerId})`
+					: sql<boolean>`false`,
+				authorDisplayName: users.displayName,
+				authorAvatarUrl: users.avatarUrl
+			})
+			.from(reviewComments)
+			.innerJoin(users, eq(reviewComments.userId, users.id))
+			// Same status filter as review photos: a file the cleanup job has claimed isn't shown.
+			.leftJoin(
+				mediaFiles,
+				and(
+					eq(reviewComments.mediaId, mediaFiles.id),
+					eq(mediaFiles.mediaStatus, 'active'),
+					isNull(mediaFiles.deletedAt)
+				)
+			)
+			.where(
+				and(
+					eq(reviewComments.reviewId, reviewId),
+					isNull(reviewComments.deletedAt),
+					isNull(users.deletedAt),
+					scope
+				)
+			);
+
+	const threads = await select(isNull(reviewComments.parentId))
+		.orderBy(
+			desc(sql`${reviewComments.pinnedAt} is not null`),
+			desc(reviewComments.createdAt),
+			desc(reviewComments.id)
+		)
+		.limit(200);
+	const replies = threads.length
+		? await select(
+				inArray(
+					reviewComments.parentId,
+					threads.map((t) => t.id)
+				)
+			).orderBy(desc(reviewComments.createdAt), desc(reviewComments.id))
+		: [];
+	const rows = [...threads, ...replies];
+
+	return rows.map((r) => ({
+		id: r.id,
+		body: r.body,
+		createdAt: r.createdAt.toISOString(),
+		author: { displayName: r.authorDisplayName, avatarUrl: r.authorAvatarUrl },
+		parentId: r.parentId,
+		pinned: r.pinnedAt !== null,
+		photo: r.photoUrl ? { url: r.photoUrl, width: r.photoWidth, height: r.photoHeight } : null,
+		isOwn: viewerId !== null && r.userId === viewerId,
+		editedAt: r.editedAt?.toISOString() ?? null,
+		likeCount: r.likeCount,
+		viewerHasLiked: r.viewerHasLiked
+	}));
 }
 
 /* -------------------------------------- stats ---------------------------------------- */

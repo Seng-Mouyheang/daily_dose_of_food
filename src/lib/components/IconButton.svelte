@@ -8,7 +8,7 @@
 	 *  dozen times.
 	 *
 	 *  `inert` is for the controls the handoff draws but this milestone has no backend for
-	 *  (like, save, share, "more"). It renders them visibly but makes them genuinely
+	 *  (save, share, "more"). It renders them visibly but makes them genuinely
 	 *  non-interactive — `disabled` on a real <button>, which also takes them out of the tab
 	 *  order — rather than wiring up a handler that silently does nothing. Same honesty as the
 	 *  inert nav labels in +layout.svelte. They stay at full opacity, unlike Button's disabled

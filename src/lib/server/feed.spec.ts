@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCursor, encodeCursor, groupBy } from './feed.ts';
+import { canViewReview, decodeCursor, encodeCursor, groupBy } from './feed.ts';
 
 describe('groupBy', () => {
 	it('collects rows under their key, preserving order within a group', () => {
@@ -58,5 +58,36 @@ describe('feed cursor', () => {
 		['a timestamp mangled by an extra separator', '2026-10-09T12:00:00.000Z_abc_def']
 	])('treats a %s cursor as page one', (_label, raw) => {
 		expect(decodeCursor(raw)).toBeNull();
+	});
+});
+
+describe('canViewReview', () => {
+	const published = {
+		visibility: 'public',
+		reviewStatus: 'published',
+		deletedAt: null,
+		userId: 'author'
+	};
+
+	it('lets anyone, signed in or not, see a public published review', () => {
+		expect(canViewReview(published, null)).toBe(true);
+		expect(canViewReview(published, 'someone-else')).toBe(true);
+	});
+
+	it.each([
+		['private', { visibility: 'private' }],
+		['friends (until follows exist)', { visibility: 'friends' }],
+		['draft', { reviewStatus: 'draft' }],
+		['hidden by moderation', { reviewStatus: 'hidden' }],
+		['soft-deleted', { deletedAt: new Date() }]
+	])('hides a %s review from everyone but its author', (_label, override) => {
+		const row = { ...published, ...override };
+		expect(canViewReview(row, null)).toBe(false);
+		expect(canViewReview(row, 'someone-else')).toBe(false);
+		expect(canViewReview(row, 'author')).toBe(true);
+	});
+
+	it('never treats a signed-out viewer as the author', () => {
+		expect(canViewReview({ ...published, visibility: 'private' }, null)).toBe(false);
 	});
 });

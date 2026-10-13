@@ -1,4 +1,5 @@
 import { relations } from 'drizzle-orm';
+import { reviewComments, reviewLikes } from './engagement.ts';
 import { mediaFiles } from './media.ts';
 import { placeCategories, places } from './places.ts';
 import { cuisineTypes, drinkTypes, foodTypes } from './lookups.ts';
@@ -44,7 +45,19 @@ export const reviewsRelations = relations(reviews, ({ one, many }) => ({
 	place: one(places, { fields: [reviews.placeId], references: [places.id] }),
 	items: many(reviewItems),
 	media: many(reviewMedia),
-	categoryRatings: many(reviewCategoryRatings)
+	categoryRatings: many(reviewCategoryRatings),
+	likes: many(reviewLikes),
+	comments: many(reviewComments)
+}));
+
+export const reviewLikesRelations = relations(reviewLikes, ({ one }) => ({
+	review: one(reviews, { fields: [reviewLikes.reviewId], references: [reviews.id] }),
+	user: one(users, { fields: [reviewLikes.userId], references: [users.id] })
+}));
+
+export const reviewCommentsRelations = relations(reviewComments, ({ one }) => ({
+	review: one(reviews, { fields: [reviewComments.reviewId], references: [reviews.id] }),
+	author: one(users, { fields: [reviewComments.userId], references: [users.id] })
 }));
 
 export const reviewMediaRelations = relations(reviewMedia, ({ one }) => ({

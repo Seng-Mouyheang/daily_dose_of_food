@@ -94,3 +94,12 @@ export function greetingFor(date: Date): string {
 	if (hour < 18) return 'Good afternoon';
 	return 'Good evening';
 }
+
+/** 950 -> "950", 1200 -> "1.2K", 1000 -> "1K", 2_500_000 -> "2.5M". Truncates rather than
+ *  rounds, so a count is never shown higher than it is (1,999 is "1.9K", not "2K"). */
+const compact = new Intl.NumberFormat('en', {
+	notation: 'compact',
+	maximumFractionDigits: 1,
+	roundingMode: 'trunc'
+});
+export const formatCount = (n: number): string => compact.format(n);

@@ -68,6 +68,9 @@
 		"vite",
 		"vitest",
 		"whsec",
-		"untabbable"
+		"untabbable",
+		"onreply",
+		"btrim",
+		"ddof"
 	]
 }

@@ -187,7 +187,14 @@
 		{/if}
 
 		{#if view.href}
-			<ReviewCardActions commentsHref={`${view.href}#comments`} />
+			<ReviewCardActions
+				reviewId={view.reviewId}
+				liked={view.viewerHasLiked}
+				likeCount={view.likeCount}
+				commentCount={view.commentCount}
+				commentsHref={`${view.href}#comments`}
+				canLike={view.canLike}
+			/>
 		{:else}
 			<footer
 				class="flex items-center justify-between border-t border-line pt-2.5 text-xs text-ink-3"

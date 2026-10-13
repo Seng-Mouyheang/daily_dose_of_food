@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatVisitDate, greetingFor, priceWithTax, ratingWord, timeAgo } from './format.ts';
+import {
+	formatCount,
+	formatVisitDate,
+	greetingFor,
+	priceWithTax,
+	ratingWord,
+	timeAgo
+} from './format.ts';
 
 describe('formatVisitDate', () => {
 	it('formats an ISO date as "D Mon YYYY"', () => {
@@ -91,5 +98,21 @@ describe('greetingFor', () => {
 		[23, 'Good evening']
 	])('greets %d:00 with "%s"', (hour, expected) => {
 		expect(greetingFor(at(hour))).toBe(expected);
+	});
+});
+
+describe('formatCount', () => {
+	it.each([
+		[0, '0'],
+		[950, '950'],
+		[1000, '1K'],
+		[1200, '1.2K'],
+		[1999, '1.9K'],
+		[12500, '12.5K'],
+		[999_999, '999.9K'],
+		[1_000_000, '1M'],
+		[2_500_000, '2.5M']
+	])('formats %d as %s', (n, expected) => {
+		expect(formatCount(n)).toBe(expected);
 	});
 });

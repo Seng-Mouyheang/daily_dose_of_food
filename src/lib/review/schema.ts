@@ -168,3 +168,26 @@ export type PublishReview = z.infer<typeof publishReviewSchema>;
 export type ReviewItemInput = z.infer<typeof reviewItemSchema>;
 export type CategoryRatingInput = z.infer<typeof categoryRatingSchema>;
 export type PlaceRefInput = z.infer<typeof placeRefSchema>;
+
+/** Comment length cap. 500 sits in the usual social-media range (X 280, Instagram 2,200) and
+ *  matches the review notes limit. The column is varchar(1000), so earlier, longer comments
+ *  stay valid and this can be tuned without a migration. */
+export const COMMENT_MAX_LENGTH = 500;
+
+/** A comment on a review. Trimmed before the length checks so a body of spaces counts as empty,
+ *  which is also what the database CHECK enforces — this just gets there first with a message
+ *  worth showing. */
+export const commentSchema = z
+	.object({
+		body: z
+			.string()
+			.trim()
+			.max(COMMENT_MAX_LENGTH, `Comments are limited to ${COMMENT_MAX_LENGTH} characters.`),
+		/** Cloudinary public id of an attached photo, already uploaded and registered. */
+		mediaPublicId: z.string().min(1).max(255).optional()
+	})
+	// Text, a photo, or both — the same rule as the database CHECK.
+	.refine((c) => c.body.length > 0 || c.mediaPublicId, {
+		message: 'Write something before posting.',
+		path: ['body']
+	});

@@ -62,6 +62,13 @@ export interface ReviewCardView {
 	 *  row, since by then both answers are already settled. */
 	visitedAt: string | null;
 	visibility: Visibility | null;
+	/** Engagement. Zero / false on the wizard preview, which has no id to like yet. */
+	reviewId: string | null;
+	likeCount: number;
+	commentCount: number;
+	viewerHasLiked: boolean;
+	/** False when signed out: the heart then links to sign-in instead of toggling. */
+	canLike: boolean;
 }
 
 export const VISIT_LABEL: Record<string, string> = {
@@ -188,7 +195,12 @@ export function cardViewFromDraft(
 		tags,
 		description: blankToNull(draft.description),
 		visitedAt: draft.visitedAt,
-		visibility: draft.visibility
+		visibility: draft.visibility,
+		reviewId: null,
+		likeCount: 0,
+		commentCount: 0,
+		viewerHasLiked: false,
+		canLike: false
 	};
 }
 
@@ -261,6 +273,30 @@ export interface FeedReview {
 	items: FeedItem[];
 	tags: ReviewCardTag[];
 	categoryRatings: FeedCategoryRating[];
+	likeCount: number;
+	commentCount: number;
+	/** Always false for a signed-out viewer. */
+	viewerHasLiked: boolean;
+}
+
+export interface ReviewComment {
+	id: string;
+	body: string;
+	/** ISO instant. */
+	createdAt: string;
+	author: ReviewCardAuthor;
+	/** The viewer wrote it, so the page offers Edit and Delete. */
+	isOwn: boolean;
+	/** An attached photo, if any. */
+	photo: { url: string; width: number | null; height: number | null } | null;
+	/** The review's author pinned this top-level comment to the top. */
+	pinned: boolean;
+	/** The thread's top-level comment when this is a reply; null for a top-level comment. */
+	parentId: string | null;
+	/** ISO instant of the last edit, or null if never edited. */
+	editedAt: string | null;
+	likeCount: number;
+	viewerHasLiked: boolean;
 }
 
 /** The item the card speaks for: the dish on a review that covers both, otherwise whatever
@@ -290,7 +326,11 @@ export function totalWithTax(items: FeedItem[]): number | null {
 /** A published review as the feed's card. `timeAgoLabel` is passed in rather than computed
  *  here so this stays independent of the clock — the caller is a `$derived` that already has
  *  to decide what "now" means. */
-export function cardViewFromRow(review: FeedReview, timeAgoLabel: string): ReviewCardView {
+export function cardViewFromRow(
+	review: FeedReview,
+	timeAgoLabel: string,
+	canLike = false
+): ReviewCardView {
 	const item = primaryItem(review.items);
 
 	return {
@@ -308,7 +348,12 @@ export function cardViewFromRow(review: FeedReview, timeAgoLabel: string): Revie
 		tags: review.tags,
 		description: blankToNull(review.description),
 		visitedAt: review.visitedAt,
-		visibility: review.visibility
+		visibility: review.visibility,
+		reviewId: review.id,
+		likeCount: review.likeCount,
+		commentCount: review.commentCount,
+		viewerHasLiked: review.viewerHasLiked,
+		canLike
 	};
 }
 

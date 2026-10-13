@@ -27,7 +27,11 @@
 		const now = new Date();
 		return reviews.map((review) => ({
 			id: review.id,
-			view: cardViewFromRow(review, timeAgo(review.publishedAt ?? review.visitedAt, now))
+			view: cardViewFromRow(
+				review,
+				timeAgo(review.publishedAt ?? review.visitedAt, now),
+				data.user !== null
+			)
 		}));
 	});
 

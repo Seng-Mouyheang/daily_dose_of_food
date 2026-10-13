@@ -47,7 +47,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	const [feed, stats] = await Promise.all([
-		getForYouFeed({ cursor: decodeCursor(url.searchParams.get('cursor')) }),
+		getForYouFeed({ cursor: decodeCursor(url.searchParams.get('cursor')), viewerId: user.id }),
 		getMonthlyStats(user.id, month.start, month.end)
 	]);
 
