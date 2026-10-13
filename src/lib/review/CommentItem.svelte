@@ -101,7 +101,7 @@
 					bind:this={menu}
 					id="menu-{comment.id}"
 					popover
-					class="menu min-w-36 rounded-input border border-line bg-surface p-1 text-sm text-ink shadow-card-lg"
+					class="anchored-menu min-w-36 rounded-input border border-line bg-surface p-1 text-sm text-ink shadow-card-lg"
 					style="position-anchor: {anchor}"
 				>
 					{#if canPin && !comment.parentId}
@@ -324,17 +324,3 @@
 		{/if}
 	</div>
 </li>
-
-<style>
-	/* Popover sits in the top layer; anchor it under its "more" button where supported, and fall
-	   back to the browser's centred popover elsewhere. */
-	@supports (anchor-name: --a) {
-		.menu {
-			margin: 0;
-			inset: auto;
-			top: anchor(bottom);
-			right: anchor(right);
-			margin-top: 4px;
-		}
-	}
-</style>

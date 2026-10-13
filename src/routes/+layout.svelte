@@ -87,14 +87,18 @@
 
 	{@render children()}
 
-	<Show when="signed-in">
-		<!-- The bar is `fixed`, so this spacer is what keeps the last feed card from sitting
-		     behind it. A spacer rather than padding on a wrapper around {@render children()}:
-		     it only exists when the bar does, and it avoids putting another block-level
-		     ancestor above every page — one `overflow` on such a wrapper would silently kill
-		     `position: sticky` in the pages below (the home sidebar, the review page's photo
-		     column). -->
-		<div class="h-24 lg:hidden" aria-hidden="true"></div>
-		<BottomTabBar />
-	</Show>
+	<!-- Not on the wizard: its sticky Continue / Publish footer would sit under the bar at every
+	     scroll position but the very end, and it has its own mobile header with a back link. -->
+	{#if !isWriteReview}
+		<Show when="signed-in">
+			<!-- The bar is `fixed`, so this spacer is what keeps the last feed card from sitting
+			     behind it. A spacer rather than padding on a wrapper around {@render children()}:
+			     it only exists when the bar does, and it avoids putting another block-level
+			     ancestor above every page — one `overflow` on such a wrapper would silently kill
+			     `position: sticky` in the pages below (the home sidebar, the review page's photo
+			     column). -->
+			<div class="h-24 lg:hidden" aria-hidden="true"></div>
+			<BottomTabBar />
+		</Show>
+	{/if}
 </ClerkProvider>

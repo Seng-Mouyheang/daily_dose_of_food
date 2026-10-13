@@ -67,6 +67,7 @@ export interface ReviewCardView {
 	likeCount: number;
 	commentCount: number;
 	viewerHasLiked: boolean;
+	viewerHasSaved: boolean;
 	/** False when signed out: the heart then links to sign-in instead of toggling. */
 	canLike: boolean;
 }
@@ -200,6 +201,7 @@ export function cardViewFromDraft(
 		likeCount: 0,
 		commentCount: 0,
 		viewerHasLiked: false,
+		viewerHasSaved: false,
 		canLike: false
 	};
 }
@@ -277,6 +279,7 @@ export interface FeedReview {
 	commentCount: number;
 	/** Always false for a signed-out viewer. */
 	viewerHasLiked: boolean;
+	viewerHasSaved: boolean;
 }
 
 export interface ReviewComment {
@@ -353,6 +356,7 @@ export function cardViewFromRow(
 		likeCount: review.likeCount,
 		commentCount: review.commentCount,
 		viewerHasLiked: review.viewerHasLiked,
+		viewerHasSaved: review.viewerHasSaved,
 		canLike
 	};
 }

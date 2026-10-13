@@ -181,3 +181,26 @@ body {
 		scroll-behavior: auto !important;
 	}
 }
+
+/* A popover anchored under the button that opened it (the CSS anchor positioning API), with a
+ * centred fallback where it isn't supported. The button sets `anchor-name` and the popover
+ * `position-anchor` to the same value; this just places it. Shared by every "more"/share menu —
+ * CommentItem's and ReviewCardActions' — so a tweak to the anchoring applies to both at once.
+ * `.anchored-menu-up` flips it above the button instead, for a menu that opens from the bottom
+ * of a card. */
+@supports (anchor-name: --a) {
+	.anchored-menu {
+		margin: 0;
+		inset: auto;
+		top: anchor(bottom);
+		right: anchor(right);
+		margin-top: 4px;
+	}
+
+	.anchored-menu-up {
+		top: auto;
+		bottom: anchor(top);
+		margin-top: 0;
+		margin-bottom: 4px;
+	}
+}

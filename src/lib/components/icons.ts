@@ -57,7 +57,15 @@ export const ICONS = {
 		'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="15.5" cy="8.5" r="1.5"/><path d="M3.5 17l5-5 4.5 4.5 3-3 4.5 4.5"/>',
 	pushpin:
 		'<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
-	send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>'
+	send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
+	link: '<path d="M9 15l6-6"/><path d="M11 6.5l1-1a4 4 0 0 1 5.5 5.5l-1.5 1.5"/><path d="M13 17.5l-1 1a4 4 0 0 1-5.5-5.5l1.5-1.5"/>',
+	/** A simplified "f" wordmark, for the Facebook share link. */
+	facebook:
+		'<path d="M10 21v-9H7v-3h3V7.5A4 4 0 0 1 14 3.5h2v3h-1.5A1.5 1.5 0 0 0 13 8v1h3l-.5 3H13v9"/>',
+	/** A speech bubble with a call-wave inside — evokes WhatsApp's chat-plus-call mark for its
+	 *  share link, without reproducing the logo itself. */
+	whatsapp:
+		'<path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M9 9.7c0-.5.4-1 .9-1h.5c.3 0 .6.2.7.5l.5 1.3c.1.3.1.6-.1.8l-.5.5c.4.9 1.1 1.6 2 2l.5-.5c.2-.2.5-.2.8-.1l1.3.5c.3.1.5.4.5.7v.5c0 .5-.5.9-1 .9-3.3 0-6-2.7-6-6z"/>'
 } as const;
 
 export type IconName = keyof typeof ICONS;

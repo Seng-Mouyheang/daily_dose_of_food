@@ -20,6 +20,7 @@
 import { error } from '@sveltejs/kit';
 import type { SQL } from 'drizzle-orm';
 import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type {
 	FeedCategoryRating,
 	FeedItem,
@@ -51,6 +52,7 @@ import {
 	reviewItems,
 	reviewLikes,
 	reviewMedia,
+	reviewSaves,
 	reviewRatingCriteria,
 	reviews,
 	users
@@ -122,7 +124,8 @@ export function decodeCursor(raw: string | null): FeedCursor | null {
 
 	const publishedAt = raw.slice(0, separator);
 	const id = raw.slice(separator + 1);
-	if (!id || Number.isNaN(new Date(publishedAt).getTime())) return null;
+	// The id is compared against a uuid column, so a non-uuid would reach Postgres as-is and 500.
+	if (!z.uuid().safeParse(id).success || Number.isNaN(new Date(publishedAt).getTime())) return null;
 
 	return { publishedAt, id };
 }
@@ -206,16 +209,39 @@ interface Children {
 	commentCounts: Map<string, number>;
 	/** Review ids the viewer has liked; empty when signed out. */
 	likedByViewer: Set<string>;
+	/** Review ids the viewer has saved; empty when signed out. */
+	savedByViewer: Set<string>;
+}
+
+// No real row ever has this id (the nil UUID; `defaultRandom()` draws from v4, which can't
+// produce it) — a stand-in for "nobody" so a signed-out viewer's engagement lookups stay real
+// queries with a guaranteed-empty result, rather than a branch that changes how many queries
+// are in the batch below. The DB does a few microseconds of pointless index work instead of
+// the query being skipped; what it buys back is one network round trip instead of two.
+const NOBODY_ID = '00000000-0000-0000-0000-000000000000';
+
+/** The shape likes and saves share: one row per (review, user). */
+function viewerRowIds(
+	table: PgTable,
+	reviewIdCol: AnyPgColumn<{ data: string; notNull: true }>,
+	userIdCol: AnyPgColumn,
+	{ viewerId, reviewIds }: { viewerId: string | null; reviewIds: string[] }
+) {
+	return db
+		.select({ reviewId: reviewIdCol })
+		.from(table)
+		.where(and(eq(userIdCol, viewerId ?? NOBODY_ID), inArray(reviewIdCol, reviewIds)));
 }
 
 /**
- * Everything that hangs off a set of reviews, in one batch — four queries, one round trip,
+ * Everything that hangs off a set of reviews, in one batch — nine queries, one round trip,
  * regardless of how many reviews are in `reviewIds`.
  *
  * The feed only strictly needs photos, items and tags; the per-category ratings are the review
  * page's rating panel. They are fetched either way rather than behind a flag: it is a handful
  * of extra rows inside a batch that was already going out, and one code path means the feed
- * card and the review page can never disagree about what a review contains.
+ * card and the review page can never disagree about what a review contains. The same is true
+ * of the viewer's own likes and saves (last two queries): always fetched, never a second trip.
  */
 export async function getReviewChildren(
 	reviewIds: string[],
@@ -229,138 +255,142 @@ export async function getReviewChildren(
 			categoryRatings: new Map(),
 			likeCounts: new Map(),
 			commentCounts: new Map(),
-			likedByViewer: new Set()
+			likedByViewer: new Set(),
+			savedByViewer: new Set()
 		};
 	}
 
-	// The viewer's own likes depend on who is looking, so they ride alongside the batch rather
-	// than inside it — a signed-out viewer skips the query entirely instead of sending a dummy
-	// id. Both are in flight at once.
-	const viewerLikes = viewerId
-		? db
-				.select({ reviewId: reviewLikes.reviewId })
-				.from(reviewLikes)
-				.where(and(eq(reviewLikes.userId, viewerId), inArray(reviewLikes.reviewId, reviewIds)))
-		: Promise.resolve([] as { reviewId: string }[]);
-
 	const [
-		[photoRows, itemRows, foodTypeRows, tagRows, ratingRows, likeCountRows, commentCountRows],
-		likedRows
-	] = await Promise.all([
-		db.batch([
-			// A media row can be soft-deleted by the orphan cleanup job (photoCleanup.ts) after the
-			// review is published, so filter on the file's own status rather than trusting the join.
-			db
-				.select({
-					reviewId: reviewMedia.reviewId,
-					url: mediaFiles.url,
-					width: mediaFiles.width,
-					height: mediaFiles.height,
-					caption: reviewMedia.caption
-				})
-				.from(reviewMedia)
-				.innerJoin(mediaFiles, eq(reviewMedia.mediaId, mediaFiles.id))
-				.where(
-					and(
-						inArray(reviewMedia.reviewId, reviewIds),
-						eq(mediaFiles.mediaStatus, 'active'),
-						isNull(mediaFiles.deletedAt)
-					)
+		photoRows,
+		itemRows,
+		foodTypeRows,
+		tagRows,
+		ratingRows,
+		likeCountRows,
+		commentCountRows,
+		likedRows,
+		savedRows
+	] = await db.batch([
+		// A media row can be soft-deleted by the orphan cleanup job (photoCleanup.ts) after the
+		// review is published, so filter on the file's own status rather than trusting the join.
+		db
+			.select({
+				reviewId: reviewMedia.reviewId,
+				url: mediaFiles.url,
+				width: mediaFiles.width,
+				height: mediaFiles.height,
+				caption: reviewMedia.caption
+			})
+			.from(reviewMedia)
+			.innerJoin(mediaFiles, eq(reviewMedia.mediaId, mediaFiles.id))
+			.where(
+				and(
+					inArray(reviewMedia.reviewId, reviewIds),
+					eq(mediaFiles.mediaStatus, 'active'),
+					isNull(mediaFiles.deletedAt)
 				)
-				// The cover leads the gallery wherever it is rendered, so order it first here and no
-				// consumer has to re-sort.
-				.orderBy(desc(reviewMedia.isCover), asc(reviewMedia.displayOrder)),
+			)
+			// The cover leads the gallery wherever it is rendered, so order it first here and no
+			// consumer has to re-sort.
+			.orderBy(desc(reviewMedia.isCover), asc(reviewMedia.displayOrder)),
 
-			db
-				.select({
-					id: reviewItems.id,
-					reviewId: reviewItems.reviewId,
-					itemType: reviewItems.itemType,
-					itemName: reviewItems.itemName,
-					price: reviewItems.price,
-					taxPercent: reviewItems.taxPercent,
-					portionSize: foodItemDetails.portionSize,
-					cuisineName: cuisineTypes.name,
-					sizeLabel: drinkItemDetails.sizeLabel,
-					sugarLevelPercent: drinkItemDetails.sugarLevelPercent,
-					iceLevel: drinkItemDetails.iceLevel,
-					drinkTypeName: drinkTypes.name
-				})
-				.from(reviewItems)
-				.leftJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
-				.leftJoin(cuisineTypes, eq(foodItemDetails.cuisineTypeId, cuisineTypes.id))
-				.leftJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
-				.leftJoin(drinkTypes, eq(drinkItemDetails.drinkTypeId, drinkTypes.id))
-				.where(inArray(reviewItems.reviewId, reviewIds))
-				.orderBy(asc(reviewItems.displayOrder)),
+		db
+			.select({
+				id: reviewItems.id,
+				reviewId: reviewItems.reviewId,
+				itemType: reviewItems.itemType,
+				itemName: reviewItems.itemName,
+				price: reviewItems.price,
+				taxPercent: reviewItems.taxPercent,
+				portionSize: foodItemDetails.portionSize,
+				cuisineName: cuisineTypes.name,
+				sizeLabel: drinkItemDetails.sizeLabel,
+				sugarLevelPercent: drinkItemDetails.sugarLevelPercent,
+				iceLevel: drinkItemDetails.iceLevel,
+				drinkTypeName: drinkTypes.name
+			})
+			.from(reviewItems)
+			.leftJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
+			.leftJoin(cuisineTypes, eq(foodItemDetails.cuisineTypeId, cuisineTypes.id))
+			.leftJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
+			.leftJoin(drinkTypes, eq(drinkItemDetails.drinkTypeId, drinkTypes.id))
+			.where(inArray(reviewItems.reviewId, reviewIds))
+			.orderBy(asc(reviewItems.displayOrder)),
 
-			// Food types are many-per-item, so they can't ride the item query without multiplying
-			// its rows. The card and review page only show the first, but fetching the set keeps
-			// that a display decision rather than one baked into SQL.
-			db
-				.select({
-					reviewItemId: reviewItemFoodTypes.reviewItemId,
-					name: foodTypes.name
-				})
-				.from(reviewItemFoodTypes)
-				.innerJoin(reviewItems, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
-				.innerJoin(foodTypes, eq(reviewItemFoodTypes.foodTypeId, foodTypes.id))
-				.where(inArray(reviewItems.reviewId, reviewIds)),
+		// Food types are many-per-item, so they can't ride the item query without multiplying
+		// its rows. The card and review page only show the first, but fetching the set keeps
+		// that a display decision rather than one baked into SQL.
+		db
+			.select({
+				reviewItemId: reviewItemFoodTypes.reviewItemId,
+				name: foodTypes.name
+			})
+			.from(reviewItemFoodTypes)
+			.innerJoin(reviewItems, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
+			.innerJoin(foodTypes, eq(reviewItemFoodTypes.foodTypeId, foodTypes.id))
+			.where(inArray(reviewItems.reviewId, reviewIds)),
 
-			db
-				.select({
-					reviewId: reviewCategoryRatings.reviewId,
-					label: ratingCriteriaOptions.label,
-					sentiment: ratingCriteriaOptions.sentiment
-				})
-				.from(reviewCategoryRatings)
-				.innerJoin(
-					reviewRatingCriteria,
-					eq(reviewRatingCriteria.reviewCategoryRatingId, reviewCategoryRatings.id)
+		db
+			.select({
+				reviewId: reviewCategoryRatings.reviewId,
+				label: ratingCriteriaOptions.label,
+				sentiment: ratingCriteriaOptions.sentiment
+			})
+			.from(reviewCategoryRatings)
+			.innerJoin(
+				reviewRatingCriteria,
+				eq(reviewRatingCriteria.reviewCategoryRatingId, reviewCategoryRatings.id)
+			)
+			.innerJoin(
+				ratingCriteriaOptions,
+				eq(reviewRatingCriteria.criteriaOptionId, ratingCriteriaOptions.id)
+			)
+			.where(inArray(reviewCategoryRatings.reviewId, reviewIds)),
+
+		db
+			.select({
+				reviewId: reviewCategoryRatings.reviewId,
+				categoryId: ratingCategories.id,
+				slug: ratingCategories.slug,
+				name: ratingCategories.name,
+				ratingValue: reviewCategoryRatings.ratingValue
+			})
+			.from(reviewCategoryRatings)
+			.innerJoin(ratingCategories, eq(reviewCategoryRatings.ratingCategoryId, ratingCategories.id))
+			.where(inArray(reviewCategoryRatings.reviewId, reviewIds))
+			.orderBy(asc(ratingCategories.displayOrder)),
+
+		db
+			.select({ reviewId: reviewLikes.reviewId, n: count() })
+			.from(reviewLikes)
+			.where(inArray(reviewLikes.reviewId, reviewIds))
+			.groupBy(reviewLikes.reviewId),
+
+		// Joined to users like getComments, so the count matches the list it sits above.
+		db
+			.select({ reviewId: reviewComments.reviewId, n: count() })
+			.from(reviewComments)
+			.innerJoin(users, eq(reviewComments.userId, users.id))
+			.where(
+				and(
+					inArray(reviewComments.reviewId, reviewIds),
+					isNull(reviewComments.deletedAt),
+					isNull(users.deletedAt)
 				)
-				.innerJoin(
-					ratingCriteriaOptions,
-					eq(reviewRatingCriteria.criteriaOptionId, ratingCriteriaOptions.id)
-				)
-				.where(inArray(reviewCategoryRatings.reviewId, reviewIds)),
+			)
+			.groupBy(reviewComments.reviewId),
 
-			db
-				.select({
-					reviewId: reviewCategoryRatings.reviewId,
-					categoryId: ratingCategories.id,
-					slug: ratingCategories.slug,
-					name: ratingCategories.name,
-					ratingValue: reviewCategoryRatings.ratingValue
-				})
-				.from(reviewCategoryRatings)
-				.innerJoin(
-					ratingCategories,
-					eq(reviewCategoryRatings.ratingCategoryId, ratingCategories.id)
-				)
-				.where(inArray(reviewCategoryRatings.reviewId, reviewIds))
-				.orderBy(asc(ratingCategories.displayOrder)),
-
-			db
-				.select({ reviewId: reviewLikes.reviewId, n: count() })
-				.from(reviewLikes)
-				.where(inArray(reviewLikes.reviewId, reviewIds))
-				.groupBy(reviewLikes.reviewId),
-
-			// Joined to users like getComments, so the count matches the list it sits above.
-			db
-				.select({ reviewId: reviewComments.reviewId, n: count() })
-				.from(reviewComments)
-				.innerJoin(users, eq(reviewComments.userId, users.id))
-				.where(
-					and(
-						inArray(reviewComments.reviewId, reviewIds),
-						isNull(reviewComments.deletedAt),
-						isNull(users.deletedAt)
-					)
-				)
-				.groupBy(reviewComments.reviewId)
-		]),
-		viewerLikes
+		// The viewer's own likes and saves depend on who is looking; they ride in the same
+		// batch as everything above (one round trip for all nine queries) rather than a
+		// separate await — `viewerRowIds` keeps that correct for a signed-out viewer too.
+		viewerRowIds(reviewLikes, reviewLikes.reviewId, reviewLikes.userId, {
+			viewerId,
+			reviewIds
+		}),
+		viewerRowIds(reviewSaves, reviewSaves.reviewId, reviewSaves.userId, {
+			viewerId,
+			reviewIds
+		})
 	]);
 
 	const foodTypeByItem = groupBy(
@@ -413,7 +443,8 @@ export async function getReviewChildren(
 		),
 		likeCounts: new Map(likeCountRows.map((r) => [r.reviewId, r.n])),
 		commentCounts: new Map(commentCountRows.map((r) => [r.reviewId, r.n])),
-		likedByViewer: new Set(likedRows.map((r) => r.reviewId))
+		likedByViewer: new Set(likedRows.map((r) => r.reviewId)),
+		savedByViewer: new Set(savedRows.map((r) => r.reviewId))
 	};
 }
 
@@ -449,7 +480,8 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
 		categoryRatings: children.categoryRatings.get(row.id) ?? [],
 		likeCount: children.likeCounts.get(row.id) ?? 0,
 		commentCount: children.commentCounts.get(row.id) ?? 0,
-		viewerHasLiked: children.likedByViewer.has(row.id)
+		viewerHasLiked: children.likedByViewer.has(row.id),
+		viewerHasSaved: children.savedByViewer.has(row.id)
 	};
 }
 

@@ -260,6 +260,8 @@
 				<ReviewCardActions
 					reviewId={review.id}
 					liked={review.viewerHasLiked}
+					saved={review.viewerHasSaved}
+					shareTitle={title}
 					likeCount={review.likeCount}
 					commentCount={review.commentCount + localComments.length}
 					commentsHref="#comments"
@@ -279,6 +281,7 @@
 							const body = String(formData.get('body') ?? '').trim();
 							const tempId = `pending-${Date.now()}`;
 							const sentPhoto = photo;
+							const sentReplying = replying;
 							if ((body || sentPhoto) && data.user) {
 								localComments = [
 									{
@@ -289,7 +292,7 @@
 											displayName: data.user.displayName,
 											avatarUrl: data.user.avatarUrl
 										},
-										parentId: replying?.id ?? null,
+										parentId: sentReplying?.id ?? null,
 										pinned: false,
 										photo: sentPhoto
 											? { url: sentPhoto.preview, width: sentPhoto.width, height: sentPhoto.height }
@@ -315,11 +318,15 @@
 										: undefined;
 								if (saved) {
 									localComments = localComments.map((c) => (c.id === tempId ? saved : c));
+									// Applies the success to `form` so an earlier failure's message goes away;
+									// no reset (the form was already cleared) and no reload (keeps the optimistic list).
+									await update({ reset: false, invalidateAll: false });
 									return;
 								}
 								// Failed: drop the optimistic copy and give the text and photo back with the error.
 								localComments = localComments.filter((c) => c.id !== tempId);
 								photo = sentPhoto;
+								replying = sentReplying;
 								await update();
 								if (bodyEl) {
 									bodyEl.value = body;

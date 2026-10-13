@@ -33,6 +33,25 @@ export const reviewLikes = pgTable(
 	]
 );
 
+/** A private bookmark: one row per (review, user), the same shape as a like. Never counted or
+ *  shown to anyone but the saver; the user index is what the Saved page lists from. */
+export const reviewSaves = pgTable(
+	'review_saves',
+	{
+		reviewId: uuid('review_id')
+			.notNull()
+			.references(() => reviews.id, { onDelete: 'cascade' }),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'restrict' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	(t) => [
+		primaryKey({ columns: [t.reviewId, t.userId] }),
+		index('idx_review_saves_user').on(t.userId, sql`${t.createdAt} DESC`)
+	]
+);
+
 export const reviewComments = pgTable(
 	'review_comments',
 	{

@@ -190,6 +190,8 @@
 			<ReviewCardActions
 				reviewId={view.reviewId}
 				liked={view.viewerHasLiked}
+				saved={view.viewerHasSaved}
+				shareTitle={view.title}
 				likeCount={view.likeCount}
 				commentCount={view.commentCount}
 				commentsHref={`${view.href}#comments`}

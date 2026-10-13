@@ -1,5 +1,5 @@
 /**
- * The engagement write path: likes and comments. The read side (counts, the viewer's own likes,
+ * The engagement write path: likes, saves and comments. The read side (counts, the viewer's own likes,
  * the comment list) lives in feed.ts next to the queries it has to stay consistent with.
  *
  * Nothing here checks whether the caller may see the review — that is the route's job, via
@@ -8,7 +8,13 @@
  */
 import { and, count, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { db } from './db/index.ts';
-import { mediaFiles, reviewCommentLikes, reviewComments, reviewLikes } from './db/schema/index.ts';
+import {
+	mediaFiles,
+	reviewCommentLikes,
+	reviewComments,
+	reviewLikes,
+	reviewSaves
+} from './db/schema/index.ts';
 
 /** Idempotent: the composite primary key turns a repeated like (double-click, retry, a second
  *  tab) into a no-op instead of an error. */
@@ -20,6 +26,17 @@ export async function unlikeReview(reviewId: string, userId: string): Promise<vo
 	await db
 		.delete(reviewLikes)
 		.where(and(eq(reviewLikes.reviewId, reviewId), eq(reviewLikes.userId, userId)));
+}
+
+/** Idempotent for the same reason as likeReview. */
+export async function saveReview(reviewId: string, userId: string): Promise<void> {
+	await db.insert(reviewSaves).values({ reviewId, userId }).onConflictDoNothing();
+}
+
+export async function unsaveReview(reviewId: string, userId: string): Promise<void> {
+	await db
+		.delete(reviewSaves)
+		.where(and(eq(reviewSaves.reviewId, reviewId), eq(reviewSaves.userId, userId)));
 }
 
 export async function countLikes(reviewId: string): Promise<number> {

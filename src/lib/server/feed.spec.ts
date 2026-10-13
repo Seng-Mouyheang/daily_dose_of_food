@@ -55,6 +55,7 @@ describe('feed cursor', () => {
 		['no timestamp', '_abc'],
 		['no id', '2026-10-09T12:00:00.000Z_'],
 		['unparseable timestamp', 'yesterday_abc'],
+		['non-uuid id', '2026-10-09T12:00:00.000Z_abc'],
 		['a timestamp mangled by an extra separator', '2026-10-09T12:00:00.000Z_abc_def']
 	])('treats a %s cursor as page one', (_label, raw) => {
 		expect(decodeCursor(raw)).toBeNull();
