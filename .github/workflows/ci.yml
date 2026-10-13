@@ -15,8 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      # A real, dedicated test database — migrated the same way any other environment is
+      # (`pnpm db:migrate`), so e2e load functions get real empty-result/404 behavior instead
+      # of a fetch against an address nothing is listening on. E2E_DATABASE_AVAILABLE lets a
+      # test that needs a live round trip (page.server.e2e.ts's "unknown review id") skip
+      # itself cleanly — rather than fail red — in any run without this secret, e.g. a fork PR,
+      # which GitHub withholds repo secrets from regardless.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      E2E_DATABASE_AVAILABLE: ${{ secrets.DATABASE_URL != '' }}
       # Placeholders so the build works without real secrets
-      DATABASE_URL: postgres://user:password@localhost:5432/placeholder
       CLOUDINARY_CLOUD_NAME: placeholder
       CLOUDINARY_API_KEY: placeholder
       CLOUDINARY_API_SECRET: placeholder
