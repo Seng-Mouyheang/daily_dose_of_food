@@ -29,6 +29,7 @@
 		"esbuild",
 		"ewkt",
 		"favorited",
+		"feuille",
 		"Figtree",
 		"foodtype",
 		"HTMLX",
@@ -45,6 +46,7 @@
 		"playwright",
 		"pnpm",
 		"postgis",
+		"rgba",
 		"Sisowath",
 		"slugifies",
 		"slugify",
@@ -63,9 +65,13 @@
 		"unparseable",
 		"unstarred",
 		"vercel",
+		"wordmark",
 		"vite",
 		"vitest",
 		"whsec",
-		"untabbable"
+		"untabbable",
+		"onreply",
+		"btrim",
+		"ddof"
 	]
 }

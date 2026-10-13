@@ -5,8 +5,15 @@
 		name,
 		size = 20,
 		weight = 1.8,
+		filled = false,
 		class: extraClass = ''
-	}: { name: IconName; size?: number; weight?: number; class?: string } = $props();
+	}: {
+		name: IconName;
+		size?: number;
+		weight?: number;
+		filled?: boolean;
+		class?: string;
+	} = $props();
 </script>
 
 <svg
@@ -14,7 +21,7 @@
 	width={size}
 	height={size}
 	viewBox="0 0 24 24"
-	fill="none"
+	fill={filled ? 'currentColor' : 'none'}
 	stroke="currentColor"
 	stroke-width={weight}
 	stroke-linecap="round"

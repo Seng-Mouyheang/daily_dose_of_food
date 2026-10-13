@@ -4,13 +4,16 @@
 	import { page } from '$app/state';
 	import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from 'svelte-clerk';
 	import Icon from '#lib/components/Icon.svelte';
+	import BottomTabBar from '#lib/components/BottomTabBar.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
 
 	// Explore/Favorites don't have pages yet, so they stay inert labels rather than dead links —
-	// matching the prototype's own desktop chrome, where only "Write a review" is a real link.
-	const navLabels = ['Journal', 'Explore', 'Favorites'];
+	// matching the prototype's own desktop chrome, where only "Home" and "Write a review" are
+	// real links.
+	const navLabels = ['Explore', 'Favorites'];
+	const isHome = $derived(page.url.pathname === '/');
 	const isWriteReview = $derived(page.url.pathname.startsWith('/review/new'));
 </script>
 
@@ -32,12 +35,23 @@
 
 			<Show when="signed-in">
 				<nav class="flex items-stretch gap-6 text-sm font-medium">
+					<a
+						href="/"
+						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
+							isHome ? 'border-accent text-ink' : 'border-transparent text-ink-2'
+						}`}
+					>
+						Home
+					</a>
 					{#each navLabels as label (label)}
-						<span class="hidden cursor-default self-center text-ink-2 sm:inline">{label}</span>
+						<span
+							class="-mb-px hidden cursor-default items-center border-b-2 border-transparent px-1 py-0.5 text-ink-2 sm:flex"
+							>{label}</span
+						>
 					{/each}
 					<a
 						href="/review/new"
-						class={`-mb-px flex items-center border-b-2 ${
+						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
 							isWriteReview ? 'border-accent text-ink' : 'border-transparent text-ink-2'
 						}`}
 					>
@@ -72,4 +86,19 @@
 	</header>
 
 	{@render children()}
+
+	<!-- Not on the wizard: its sticky Continue / Publish footer would sit under the bar at every
+	     scroll position but the very end, and it has its own mobile header with a back link. -->
+	{#if !isWriteReview}
+		<Show when="signed-in">
+			<!-- The bar is `fixed`, so this spacer is what keeps the last feed card from sitting
+			     behind it. A spacer rather than padding on a wrapper around {@render children()}:
+			     it only exists when the bar does, and it avoids putting another block-level
+			     ancestor above every page — one `overflow` on such a wrapper would silently kill
+			     `position: sticky` in the pages below (the home sidebar, the review page's photo
+			     column). -->
+			<div class="h-24 lg:hidden" aria-hidden="true"></div>
+			<BottomTabBar />
+		</Show>
+	{/if}
 </ClerkProvider>

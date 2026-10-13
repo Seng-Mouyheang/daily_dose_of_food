@@ -5,6 +5,7 @@
 	import Button from '#lib/components/Button.svelte';
 	import CollapsibleRail from '#lib/components/CollapsibleRail.svelte';
 	import ReviewCard from '#lib/review/ReviewCard.svelte';
+	import { cardViewFromDraft } from '#lib/review/card.ts';
 	import { ReviewDraft } from '#lib/review/draft.svelte.ts';
 	import { buildPublishPayload } from '#lib/review/payload.ts';
 	import Step1Visit from './steps/Step1Visit.svelte';
@@ -26,6 +27,16 @@
 	let attemptedStep = $state<number | null>(null);
 	let submitting = $state(false);
 	let savedFlash = $state(false);
+
+	/** The live preview card. `data.user` is null only for the split second before the layout's
+	 *  load resolves (and this page redirects a signed-out visitor anyway), so "You" is the
+	 *  placeholder name rather than a real anonymous state. */
+	const previewView = $derived(
+		cardViewFromDraft(draft.toSnapshot(), data.lookups, {
+			displayName: data.user?.displayName ?? 'You',
+			avatarUrl: data.user?.avatarUrl ?? null
+		})
+	);
 
 	onMount(() => {
 		draft.restoreFromLocalStorage();
@@ -349,13 +360,7 @@
 		     instead of the parent actually scrolling. -->
 		<div class="no-scrollbar flex flex-col gap-4 pb-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
 			<div class="shrink-0">
-				<ReviewCard
-					draft={draft.toSnapshot()}
-					categories={data.lookups.categories}
-					foodTypes={data.lookups.foodTypes}
-					drinkTypes={data.lookups.drinkTypes}
-					user={data.user}
-				/>
+				<ReviewCard view={previewView} />
 			</div>
 			{#if draft.step === 4}
 				<div class="shrink-0">

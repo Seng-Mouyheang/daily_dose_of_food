@@ -1,29 +1,23 @@
 <script lang="ts">
 	import Icon from '#lib/components/Icon.svelte';
 	import type { PhotoDraft, ReviewDraft } from '#lib/review/draft.svelte.ts';
+	import {
+		ACCEPTED_IMAGE as ACCEPTED,
+		MAX_UPLOAD_BYTES,
+		registerPhoto,
+		signUploadParams,
+		uploadToCloudinary,
+		type SignedParams
+	} from '#lib/review/upload.ts';
 
 	let { draft }: { draft: ReviewDraft } = $props();
 
 	const MAX_PHOTOS = 10;
-	const ACCEPTED = /^image\/(png|jpe?g|webp|heic)$/;
-	// Cloudinary's upload API has no `max_file_size` request param (see signUpload's doc
-	// comment in cloudinary.ts for how including one as a signed param broke every upload), so
-	// the 12 MB ceiling this step advertises is enforced here instead, before anything uploads.
-	const MAX_UPLOAD_BYTES = 12_000_000;
 
 	let fileInput: HTMLInputElement | undefined;
 	let dragOver = $state(false);
 	let uploadingCount = $state(0);
 	let uploadError = $state<string | null>(null);
-
-	interface SignedParams {
-		timestamp: number;
-		folder: string;
-		allowed_formats: string;
-		signature: string;
-		apiKey: string;
-		cloudName: string;
-	}
 
 	function formatBytes(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
@@ -33,20 +27,7 @@
 	}
 
 	async function uploadFile(file: File, signed: SignedParams): Promise<PhotoDraft> {
-		const form = new FormData();
-		form.append('file', file);
-		form.append('api_key', signed.apiKey);
-		form.append('timestamp', String(signed.timestamp));
-		form.append('signature', signed.signature);
-		form.append('folder', signed.folder);
-		form.append('allowed_formats', signed.allowed_formats);
-
-		const res = await fetch(`https://api.cloudinary.com/v1_1/${signed.cloudName}/image/upload`, {
-			method: 'POST',
-			body: form
-		});
-		if (!res.ok) throw new Error('Upload failed');
-		const data = await res.json();
+		const data = await uploadToCloudinary(file, signed);
 
 		// Registers the upload server-side (a `media_files` row, `mediaStatus: 'pending'`) well
 		// before this review publishes — otherwise the asset exists only in this draft's
@@ -55,22 +36,10 @@
 		// "abandoned". Best-effort: a failed registration call just leaves this one photo on the
 		// shorter grace period instead of the generous one — not worth failing the upload itself,
 		// since the valuable part (the asset landing on Cloudinary) already succeeded.
-		await fetch('/api/photos/register', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				publicId: data.public_id,
-				version: data.version,
-				signature: data.signature,
-				format: data.format,
-				width: data.width,
-				height: data.height,
-				bytes: data.bytes
-			})
-		}).catch(() => {});
+		await registerPhoto(data);
 
 		return {
-			publicId: data.public_id,
+			publicId: data.publicId,
 			version: data.version,
 			signature: data.signature,
 			format: data.format,
@@ -79,7 +48,7 @@
 			bytes: data.bytes,
 			caption: null,
 			isCover: false,
-			previewUrl: data.secure_url
+			previewUrl: data.secureUrl
 		};
 	}
 
@@ -109,9 +78,7 @@
 		}
 		uploadingCount += files.length;
 		try {
-			const signRes = await fetch('/api/upload-signature', { method: 'POST' });
-			if (!signRes.ok) throw new Error('Could not sign upload');
-			const signed = (await signRes.json()) as SignedParams;
+			const signed = await signUploadParams();
 
 			// allSettled, not all: a batch of 3 where 1 fails must still keep the 2 that Cloudinary
 			// already stored — Promise.all would reject on the first failure and this catch would

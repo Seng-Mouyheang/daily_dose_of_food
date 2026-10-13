@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatVisitDate, priceWithTax, ratingWord } from './format.ts';
+import {
+	formatCount,
+	formatVisitDate,
+	greetingFor,
+	priceWithTax,
+	ratingWord,
+	timeAgo
+} from './format.ts';
 
 describe('formatVisitDate', () => {
 	it('formats an ISO date as "D Mon YYYY"', () => {
@@ -48,5 +55,64 @@ describe('priceWithTax', () => {
 
 	it('ignores an unparsable tax', () => {
 		expect(priceWithTax('10', '')).toBe(10);
+	});
+});
+
+describe('timeAgo', () => {
+	const now = new Date('2026-10-09T12:00:00Z');
+
+	it.each([
+		['2026-10-09T11:59:30Z', 'Just now'],
+		['2026-10-09T11:45:00Z', '15m ago'],
+		['2026-10-09T10:00:00Z', '2h ago'],
+		['2026-10-08T10:00:00Z', 'Yesterday'],
+		['2026-10-06T12:00:00Z', '3d ago']
+	])('renders %s as %s', (iso, expected) => {
+		expect(timeAgo(iso, now)).toBe(expected);
+	});
+
+	it('switches to an absolute date once it is a week old', () => {
+		expect(timeAgo('2026-09-28T12:00:00Z', now)).toBe('28 Sept 2026');
+	});
+
+	it('reads a future timestamp as "Just now" rather than a negative age', () => {
+		expect(timeAgo('2026-10-09T12:00:20Z', now)).toBe('Just now');
+	});
+
+	it('returns an empty string for an unparseable timestamp', () => {
+		expect(timeAgo('not-a-date', now)).toBe('');
+	});
+});
+
+describe('greetingFor', () => {
+	// Constructed from local parts, not an ISO instant: the function reads local hours, which is
+	// the whole point of it taking the date rather than reading the clock itself.
+	const at = (hour: number) => new Date(2026, 9, 9, hour, 0, 0);
+
+	it.each([
+		[0, 'Good morning'],
+		[11, 'Good morning'],
+		[12, 'Good afternoon'],
+		[17, 'Good afternoon'],
+		[18, 'Good evening'],
+		[23, 'Good evening']
+	])('greets %d:00 with "%s"', (hour, expected) => {
+		expect(greetingFor(at(hour))).toBe(expected);
+	});
+});
+
+describe('formatCount', () => {
+	it.each([
+		[0, '0'],
+		[950, '950'],
+		[1000, '1K'],
+		[1200, '1.2K'],
+		[1999, '1.9K'],
+		[12500, '12.5K'],
+		[999_999, '999.9K'],
+		[1_000_000, '1M'],
+		[2_500_000, '2.5M']
+	])('formats %d as %s', (n, expected) => {
+		expect(formatCount(n)).toBe(expected);
 	});
 });

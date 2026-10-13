@@ -51,3 +51,55 @@ export function resolveTypeLabel(
 	if (id !== null) return options.find((o) => o.id === id)?.name ?? null;
 	return otherValue?.trim() || null;
 }
+
+/** An absolute timestamp as the feed shows it: "Just now", "2h ago", "Yesterday", "3d ago",
+ *  then the plain date once it's over a week old (a relative distance stops being useful well
+ *  before it stops being computable — "63d ago" tells you nothing "7 Aug" doesn't).
+ *
+ *  `now` is a parameter, not `Date.now()` read inside, so this is a pure function the tests can
+ *  pin to a fixed instant. Callers in a `$derived` pass nothing and get the current time.
+ *
+ *  A timestamp in the future (clock skew between the server that wrote published_at and the
+ *  browser reading it, which is routinely a few seconds) reads as "Just now" rather than a
+ *  nonsensical negative age. */
+export function timeAgo(iso: string, now: Date = new Date()): string {
+	const then = new Date(iso);
+	if (Number.isNaN(then.getTime())) return '';
+
+	const seconds = (now.getTime() - then.getTime()) / 1000;
+	if (seconds < 60) return 'Just now';
+
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+
+	const days = Math.floor(hours / 24);
+	if (days === 1) return 'Yesterday';
+	if (days < 7) return `${days}d ago`;
+
+	return formatVisitDate(iso.slice(0, 10));
+}
+
+/** "Good evening" and friends, from the hour of the day.
+ *
+ *  Takes a Date rather than reading the clock so it stays pure — and, more importantly, so the
+ *  caller controls *whose* clock. The home page resolves this in the browser after hydration
+ *  rather than on the server: the server's timezone is UTC in production while the people using
+ *  this are in Phnom Penh (UTC+7), which would greet them with "Good evening" over breakfast. */
+export function greetingFor(date: Date): string {
+	const hour = date.getHours();
+	if (hour < 12) return 'Good morning';
+	if (hour < 18) return 'Good afternoon';
+	return 'Good evening';
+}
+
+/** 950 -> "950", 1200 -> "1.2K", 1000 -> "1K", 2_500_000 -> "2.5M". Truncates rather than
+ *  rounds, so a count is never shown higher than it is (1,999 is "1.9K", not "2K"). */
+const compact = new Intl.NumberFormat('en', {
+	notation: 'compact',
+	maximumFractionDigits: 1,
+	roundingMode: 'trunc'
+});
+export const formatCount = (n: number): string => compact.format(n);

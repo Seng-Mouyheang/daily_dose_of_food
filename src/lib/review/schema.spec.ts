@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { publishReviewSchema, type PublishReview, type ReviewItemInput } from './schema.ts';
+import {
+	COMMENT_MAX_LENGTH,
+	commentSchema,
+	publishReviewSchema,
+	type PublishReview,
+	type ReviewItemInput
+} from './schema.ts';
 
 type FoodItem = Extract<ReviewItemInput, { itemType: 'food' }>;
 type DrinkItem = Extract<ReviewItemInput, { itemType: 'drink' }>;
@@ -212,5 +218,33 @@ describe('publishReviewSchema', () => {
 			})
 		);
 		expect(result.success).toBe(false);
+	});
+});
+
+describe('commentSchema', () => {
+	it('trims the body', () => {
+		expect(commentSchema.parse({ body: '  Great spot  ' }).body).toBe('Great spot');
+	});
+
+	it.each(['', '   ', '\n\t'])('rejects an empty or whitespace-only body (%j)', (body) => {
+		const result = commentSchema.safeParse({ body });
+		expect(result.success).toBe(false);
+		expect(result.error?.issues[0]?.message).toBe('Write something before posting.');
+	});
+
+	it('accepts a photo with no text, but not neither', () => {
+		expect(commentSchema.safeParse({ body: '  ', mediaPublicId: 'ddof/u1/abc' }).success).toBe(
+			true
+		);
+		expect(commentSchema.safeParse({ body: '  ' }).success).toBe(false);
+	});
+
+	it('accepts exactly the limit and rejects one over', () => {
+		expect(commentSchema.safeParse({ body: 'a'.repeat(COMMENT_MAX_LENGTH) }).success).toBe(true);
+		const result = commentSchema.safeParse({ body: 'a'.repeat(COMMENT_MAX_LENGTH + 1) });
+		expect(result.success).toBe(false);
+		expect(result.error?.issues[0]?.message).toBe(
+			`Comments are limited to ${COMMENT_MAX_LENGTH} characters.`
+		);
 	});
 });

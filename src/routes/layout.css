@@ -32,6 +32,21 @@
 	--fav: #d64f4a;
 	--fav-soft: #fbe6e5;
 	--star-empty: #e2d6c6;
+	/* Overlay on top of a user photo (the "1/N" counter, a thumbnail's own controls).
+	 * Deliberately identical in every theme: the backdrop is a photograph, not one of our
+	 * surfaces, so a theme-aware scrim would read as a mistake over a dark image in light
+	 * mode. It is still a token so the value lives in one place rather than as a bare
+	 * bg-black/60 in each component. */
+	--scrim: rgba(20, 14, 10, 0.62);
+	--on-scrim: #ffffff;
+	/* Pills that sit on a photo (score, Favorite). Same in every theme for the same reason
+	 * as scrim; `on-photo-fav` is darker than `fav` so white text on it clears 4.5:1. */
+	--badge: rgba(255, 255, 255, 0.94);
+	--on-badge: #2a2019;
+	--on-photo-fav: #c2413b;
+
+	--card-shadow: 0 1px 2px rgba(70, 45, 20, 0.06), 0 8px 24px rgba(70, 45, 20, 0.08);
+	--card-shadow-lg: 0 2px 6px rgba(70, 45, 20, 0.06), 0 24px 60px rgba(70, 45, 20, 0.14);
 }
 
 :root[data-theme='dark'] {
@@ -55,6 +70,10 @@
 	--fav: #e8645e;
 	--fav-soft: #3d1f1d;
 	--star-empty: #4a3e33;
+	--scrim: rgba(20, 14, 10, 0.62);
+	--on-scrim: #ffffff;
+	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
+	--card-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.3), 0 24px 60px rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -79,6 +98,10 @@
 		--fav: #e8645e;
 		--fav-soft: #3d1f1d;
 		--star-empty: #4a3e33;
+		--scrim: rgba(20, 14, 10, 0.62);
+		--on-scrim: #ffffff;
+		--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
+		--card-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.3), 0 24px 60px rgba(0, 0, 0, 0.5);
 	}
 }
 
@@ -104,13 +127,18 @@
 	--color-fav: var(--fav);
 	--color-fav-soft: var(--fav-soft);
 	--color-star-empty: var(--star-empty);
+	--color-scrim: var(--scrim);
+	--color-on-scrim: var(--on-scrim);
+	--color-badge: var(--badge);
+	--color-on-badge: var(--on-badge);
+	--color-on-photo-fav: var(--on-photo-fav);
 
 	--radius-input: 12px;
 	--radius-tile: 14px;
 	--radius-card: 16px;
 
-	--shadow-card: 0 1px 2px rgba(70, 45, 20, 0.06), 0 8px 24px rgba(70, 45, 20, 0.08);
-	--shadow-card-lg: 0 2px 6px rgba(70, 45, 20, 0.06), 0 24px 60px rgba(70, 45, 20, 0.14);
+	--shadow-card: var(--card-shadow);
+	--shadow-card-lg: var(--card-shadow-lg);
 }
 
 body {
@@ -151,5 +179,28 @@ body {
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
+	}
+}
+
+/* A popover anchored under the button that opened it (the CSS anchor positioning API), with a
+ * centred fallback where it isn't supported. The button sets `anchor-name` and the popover
+ * `position-anchor` to the same value; this just places it. Shared by every "more"/share menu —
+ * CommentItem's and ReviewCardActions' — so a tweak to the anchoring applies to both at once.
+ * `.anchored-menu-up` flips it above the button instead, for a menu that opens from the bottom
+ * of a card. */
+@supports (anchor-name: --a) {
+	.anchored-menu {
+		margin: 0;
+		inset: auto;
+		top: anchor(bottom);
+		right: anchor(right);
+		margin-top: 4px;
+	}
+
+	.anchored-menu-up {
+		top: auto;
+		bottom: anchor(top);
+		margin-top: 0;
+		margin-bottom: 4px;
 	}
 }
