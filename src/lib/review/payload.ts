@@ -1,4 +1,4 @@
-import type { PublishReview, ReviewItemInput } from './schema.ts';
+import type { PublishReview, ReviewItemInput, UpdateReview } from './schema.ts';
 import type {
 	CategoryRatingDraft,
 	ItemDraft,
@@ -125,9 +125,11 @@ function hasBev(reviewType: ReviewTypeChoice): boolean {
 	return reviewType !== 'dish';
 }
 
-/** Builds the exact payload the publish action validates — pure, so it's unit-testable
- *  without mounting any component. Call with `$state.snapshot(draft)` from the wizard. */
-export function buildPublishPayload(draft: ReviewDraftSnapshot): PublishReview {
+/** Builds the exact payload the publish action (or, when editing, the save action) validates —
+ *  pure, so it's unit-testable without mounting any component. A photo the review already had
+ *  goes back by publicId alone; a new review never has one, so its payload is a plain
+ *  PublishReview. */
+export function buildPublishPayload(draft: ReviewDraftSnapshot): UpdateReview {
 	const place: PublishReview['place'] = draft.place
 		? { kind: 'existing', placeId: draft.place.id }
 		: {
@@ -158,16 +160,22 @@ export function buildPublishPayload(draft: ReviewDraftSnapshot): PublishReview {
 		isFavorite: draft.isFavorite,
 		items: items as PublishReview['items'],
 		placeRatings: usedRatings(draft.placeRatings),
-		photos: draft.photos.map((p, i) => ({
-			publicId: p.publicId,
-			version: p.version,
-			signature: p.signature,
-			format: p.format,
-			width: p.width,
-			height: p.height,
-			bytes: p.bytes,
-			caption: p.caption,
-			isCover: draft.photos.some((x) => x.isCover) ? p.isCover : i === 0
-		}))
+		photos: draft.photos.map((p, i) => {
+			const isCover = draft.photos.some((x) => x.isCover) ? p.isCover : i === 0;
+			if (p.existing) {
+				return { existing: true as const, publicId: p.publicId, caption: p.caption, isCover };
+			}
+			return {
+				publicId: p.publicId,
+				version: p.version,
+				signature: p.signature,
+				format: p.format,
+				width: p.width,
+				height: p.height,
+				bytes: p.bytes,
+				caption: p.caption,
+				isCover
+			};
+		})
 	};
 }

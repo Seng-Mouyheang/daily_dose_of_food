@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
-import type { CategoryRatingInput, PublishReview, ReviewItemInput } from '../review/schema.ts';
+import type {
+	CategoryRatingInput,
+	PublishReview,
+	ReviewItemInput,
+	UpdateReview
+} from '../review/schema.ts';
 import { cloudinarySignatureValid, deliveryUrl, publicIdBelongsToUser } from './cloudinary.ts';
 import { db } from './db/index.ts';
 import {
@@ -472,6 +477,97 @@ function resolveItemLookupOthers(
 	);
 }
 
+/** The insert for a place the review introduces, if it introduces one. */
+function placeStatement(rows: ReviewRowSet): BatchItem<'pg'> | null {
+	if (!rows.newPlace) return null;
+	const p = rows.newPlace;
+	return db
+		.insert(places)
+		.values({
+			id: p.id,
+			placeCategoryId: p.placeCategoryId,
+			name: p.name,
+			location: sql`ST_GeogFromText(${pointWkt(p.lat, p.lng)})`,
+			addressLine1: p.addressLine1,
+			city: p.city,
+			countryCode: p.countryCode,
+			createdByUserId: p.createdByUserId,
+			verificationStatus: 'unverified'
+		})
+		.onConflictDoNothing();
+}
+
+/** The statements that write everything under a review row: its media, items and their details, category ratings and their tags, and the photo links.
+ *  Shared by publishReview (after inserting the review) and updateReview (after clearing the
+ *  old children), so a published and an edited review are written by the same code. */
+function childStatements(rows: ReviewRowSet, resolvedInput: PublishReview): BatchItem<'pg'>[] {
+	const mediaRowsWithUrl = rows.newMedia.map(({ version, ...row }) => ({
+		...row,
+		url: deliveryUrl(row.storageKey, version, row.format ?? null),
+		// A brand new row goes straight to 'active' — no publish without it, unlike a row
+		// reused below that may have been sitting at 'pending' since upload time.
+		mediaStatus: 'active' as const
+	}));
+
+	const statements: BatchItem<'pg'>[] = [];
+	if (mediaRowsWithUrl.length) {
+		statements.push(db.insert(mediaFiles).values(mediaRowsWithUrl).onConflictDoNothing());
+	}
+	if (resolvedInput.photos.length) {
+		// Flips any row already sitting at 'pending' (registered at upload time, see
+		// /api/photos/register) to 'active' now that its review has actually published — the
+		// insert above already writes a brand new row as 'active', so this only ever matters
+		// for one reused via findExistingMediaIds. Keeps findOrphanedAssets' pending-vs-active
+		// distinction honest: a published photo must never still read as merely "pending".
+		// Excludes 'deleted' as a last line of defense: findExistingMediaIds above already
+		// rejected the whole publish if a row read as 'deleted' at that point, but this guards
+		// the narrow remaining window where the cleanup job's claim (claimOrphanForDeletion)
+		// could still land in between that read and this statement committing — without this,
+		// such a race would resurrect a row cleanup has already committed to destroying.
+		statements.push(
+			db
+				.update(mediaFiles)
+				.set({ mediaStatus: 'active' })
+				.where(
+					and(
+						inArray(
+							mediaFiles.storageKey,
+							resolvedInput.photos.map((p) => p.publicId)
+						),
+						ne(mediaFiles.mediaStatus, 'deleted')
+					)
+				)
+		);
+	}
+	statements.push(db.insert(reviewItems).values(rows.items).onConflictDoNothing());
+	if (rows.foodDetails.length) {
+		statements.push(db.insert(foodItemDetails).values(rows.foodDetails).onConflictDoNothing());
+	}
+	if (rows.itemFoodTypes.length) {
+		statements.push(
+			db.insert(reviewItemFoodTypes).values(rows.itemFoodTypes).onConflictDoNothing()
+		);
+	}
+	if (rows.drinkDetails.length) {
+		statements.push(db.insert(drinkItemDetails).values(rows.drinkDetails).onConflictDoNothing());
+	}
+	if (rows.categoryRatings.length) {
+		statements.push(
+			db.insert(reviewCategoryRatings).values(rows.categoryRatings).onConflictDoNothing()
+		);
+	}
+	if (rows.ratingCriteria.length) {
+		statements.push(
+			db.insert(reviewRatingCriteria).values(rows.ratingCriteria).onConflictDoNothing()
+		);
+	}
+	if (rows.reviewMedia.length) {
+		statements.push(db.insert(reviewMedia).values(rows.reviewMedia).onConflictDoNothing());
+	}
+
+	return statements;
+}
+
 /** Validates, builds, and atomically writes a full review. See buildReviewRows for the pure
  *  half of this; this function only does I/O (the pre-flight read and the batch itself). */
 export async function publishReview(
@@ -526,92 +622,134 @@ export async function publishReview(
 			mediaIdByPublicId
 		});
 
-		const mediaRowsWithUrl = rows.newMedia.map(({ version, ...row }) => ({
-			...row,
-			url: deliveryUrl(row.storageKey, version, row.format ?? null),
-			// A brand new row goes straight to 'active' — no publish without it, unlike a row
-			// reused below that may have been sitting at 'pending' since upload time.
-			mediaStatus: 'active' as const
-		}));
-
 		const statements: BatchItem<'pg'>[] = [];
-		if (rows.newPlace) {
-			const p = rows.newPlace;
-			statements.push(
-				db
-					.insert(places)
-					.values({
-						id: p.id,
-						placeCategoryId: p.placeCategoryId,
-						name: p.name,
-						location: sql`ST_GeogFromText(${pointWkt(p.lat, p.lng)})`,
-						addressLine1: p.addressLine1,
-						city: p.city,
-						countryCode: p.countryCode,
-						createdByUserId: p.createdByUserId,
-						verificationStatus: 'unverified'
-					})
-					.onConflictDoNothing()
-			);
-		}
+		const place = placeStatement(rows);
+		if (place) statements.push(place);
 		statements.push(db.insert(reviews).values(rows.review).onConflictDoNothing());
-		if (mediaRowsWithUrl.length) {
-			statements.push(db.insert(mediaFiles).values(mediaRowsWithUrl).onConflictDoNothing());
-		}
-		if (resolvedInput.photos.length) {
-			// Flips any row already sitting at 'pending' (registered at upload time, see
-			// /api/photos/register) to 'active' now that its review has actually published — the
-			// insert above already writes a brand new row as 'active', so this only ever matters
-			// for one reused via findExistingMediaIds. Keeps findOrphanedAssets' pending-vs-active
-			// distinction honest: a published photo must never still read as merely "pending".
-			// Excludes 'deleted' as a last line of defense: findExistingMediaIds above already
-			// rejected the whole publish if a row read as 'deleted' at that point, but this guards
-			// the narrow remaining window where the cleanup job's claim (claimOrphanForDeletion)
-			// could still land in between that read and this statement committing — without this,
-			// such a race would resurrect a row cleanup has already committed to destroying.
-			statements.push(
-				db
-					.update(mediaFiles)
-					.set({ mediaStatus: 'active' })
-					.where(
-						and(
-							inArray(
-								mediaFiles.storageKey,
-								resolvedInput.photos.map((p) => p.publicId)
-							),
-							ne(mediaFiles.mediaStatus, 'deleted')
-						)
-					)
-			);
-		}
-		statements.push(db.insert(reviewItems).values(rows.items).onConflictDoNothing());
-		if (rows.foodDetails.length) {
-			statements.push(db.insert(foodItemDetails).values(rows.foodDetails).onConflictDoNothing());
-		}
-		if (rows.itemFoodTypes.length) {
-			statements.push(
-				db.insert(reviewItemFoodTypes).values(rows.itemFoodTypes).onConflictDoNothing()
-			);
-		}
-		if (rows.drinkDetails.length) {
-			statements.push(db.insert(drinkItemDetails).values(rows.drinkDetails).onConflictDoNothing());
-		}
-		if (rows.categoryRatings.length) {
-			statements.push(
-				db.insert(reviewCategoryRatings).values(rows.categoryRatings).onConflictDoNothing()
-			);
-		}
-		if (rows.ratingCriteria.length) {
-			statements.push(
-				db.insert(reviewRatingCriteria).values(rows.ratingCriteria).onConflictDoNothing()
-			);
-		}
-		if (rows.reviewMedia.length) {
-			statements.push(db.insert(reviewMedia).values(rows.reviewMedia).onConflictDoNothing());
-		}
+		statements.push(...childStatements(rows, resolvedInput));
 
 		await db.batch(statements as [BatchItem<'pg'>, ...BatchItem<'pg'>[]]);
 
+		return input.reviewId;
+	} catch (err) {
+		await rollbackCreatedEntries(created);
+		throw err;
+	}
+}
+
+/**
+ * Rewrites the author's own published review from an edit. One batch: the review row is
+ * updated in place (its id, author, publish date, likes, saves and comments all stay; editedAt
+ * is set), its children — items and their details, category ratings and their tags, photo
+ * links — are deleted, and the edited set is inserted by the same childStatements a publish
+ * uses. Child ids come from stableId, so delete-then-insert inside one transaction is safe.
+ *
+ * A photo marked `existing` must be one of this review's current photos; it is re-linked by
+ * its media row and never re-verified with Cloudinary (there is no fresh signature to check).
+ * New photos go through the same checks as a publish. A photo dropped from the review keeps
+ * its media row; the orphan cleanup job is what decides its fate, as for any unused upload.
+ *
+ * Throws ReviewOwnershipError when the review doesn't exist, isn't this user's, or is deleted.
+ */
+export async function updateReview(
+	userId: string,
+	input: UpdateReview,
+	categories: RatingCategoryFlags[]
+): Promise<string> {
+	const [existing] = await db
+		.select({ userId: reviews.userId, deletedAt: reviews.deletedAt })
+		.from(reviews)
+		.where(eq(reviews.id, input.reviewId))
+		.limit(1);
+	if (!existing || existing.userId !== userId || existing.deletedAt !== null) {
+		throw new ReviewOwnershipError();
+	}
+
+	const currentKeys = new Set(
+		(
+			await db
+				.select({ storageKey: mediaFiles.storageKey })
+				.from(reviewMedia)
+				.innerJoin(mediaFiles, eq(reviewMedia.mediaId, mediaFiles.id))
+				.where(eq(reviewMedia.reviewId, input.reviewId))
+		).map((r) => r.storageKey)
+	);
+	for (const photo of input.photos) {
+		const ok =
+			'existing' in photo
+				? currentKeys.has(photo.publicId)
+				: publicIdBelongsToUser(photo.publicId, userId) && cloudinarySignatureValid(photo);
+		if (!ok) throw new InvalidPhotoError(photo.publicId);
+	}
+
+	// buildReviewRows only reads the upload fields of a photo it has to create a media row for.
+	// An existing photo always resolves through mediaIdByPublicId, so these placeholders are
+	// never written anywhere.
+	const photos: PublishReview['photos'] = input.photos.map((photo) =>
+		'existing' in photo
+			? {
+					publicId: photo.publicId,
+					caption: photo.caption,
+					isCover: photo.isCover,
+					version: 1,
+					signature: '',
+					format: '',
+					width: 1,
+					height: 1,
+					bytes: 1
+				}
+			: photo
+	);
+
+	const created: CreatedEntries = { lookups: [], criteria: [] };
+	try {
+		const resolvedInput: PublishReview = {
+			...input,
+			photos,
+			items: (await resolveItemLookupOthers(input.items, created)) as PublishReview['items'],
+			placeRatings: await Promise.all(
+				input.placeRatings.map((r) => resolveRatingCustomCriteria(r, created))
+			)
+		};
+
+		const now = new Date();
+		const rows = buildReviewRows(resolvedInput, {
+			userId,
+			now,
+			categories,
+			mediaIdByPublicId: await findExistingMediaIds(photos.map((p) => p.publicId))
+		});
+
+		const r = rows.review;
+		const statements: BatchItem<'pg'>[] = [];
+		const place = placeStatement(rows);
+		if (place) statements.push(place);
+		statements.push(
+			db
+				.update(reviews)
+				.set({
+					placeId: r.placeId,
+					reviewType: r.reviewType,
+					visitType: r.visitType,
+					mealType: r.mealType,
+					visitedAt: r.visitedAt,
+					overallRating: r.overallRating,
+					title: r.title,
+					description: r.description,
+					visibility: r.visibility,
+					isFavorite: r.isFavorite,
+					editedAt: now
+				})
+				.where(and(eq(reviews.id, input.reviewId), eq(reviews.userId, userId))),
+			// Item deletes cascade to their details, food types and item-scoped ratings (and
+			// those ratings' tags); place-scoped ratings hang off the review, so go explicitly.
+			db.delete(reviewCategoryRatings).where(eq(reviewCategoryRatings.reviewId, input.reviewId)),
+			db.delete(reviewItems).where(eq(reviewItems.reviewId, input.reviewId)),
+			db.delete(reviewMedia).where(eq(reviewMedia.reviewId, input.reviewId)),
+			...childStatements(rows, resolvedInput)
+		);
+
+		await db.batch(statements as [BatchItem<'pg'>, ...BatchItem<'pg'>[]]);
 		return input.reviewId;
 	} catch (err) {
 		await rollbackCreatedEntries(created);

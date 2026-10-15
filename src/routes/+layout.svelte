@@ -15,6 +15,8 @@
 	const isHome = $derived(page.url.pathname === '/');
 	const isJournal = $derived(page.url.pathname.startsWith('/journal'));
 	const isWriteReview = $derived(page.url.pathname.startsWith('/review/new'));
+	// The wizard, whether writing or editing: both have their own sticky footer and back link.
+	const isWizard = $derived(isWriteReview || /^\/review\/[^/]+\/edit$/.test(page.url.pathname));
 </script>
 
 <svelte:head>
@@ -99,7 +101,7 @@
 
 	<!-- Not on the wizard: its sticky Continue / Publish footer would sit under the bar at every
 	     scroll position but the very end, and it has its own mobile header with a back link. -->
-	{#if !isWriteReview}
+	{#if !isWizard}
 		<Show when="signed-in">
 			<!-- The bar is `fixed`, so this spacer is what keeps the last feed card from sitting
 			     behind it. A spacer rather than padding on a wrapper around {@render children()}:

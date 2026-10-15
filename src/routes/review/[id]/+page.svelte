@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import ActionSheet, { type SheetAction } from '#lib/components/ActionSheet.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import { toast } from '#lib/components/toast.svelte.ts';
@@ -134,6 +136,7 @@
 	let confirmingDelete = $state(false);
 
 	const ownActions = $derived<SheetAction[]>([
+		{ label: 'Edit review', icon: 'pencil', href: `/review/${review.id}/edit` },
 		{
 			label: 'Delete review',
 			icon: 'trash',
@@ -141,6 +144,16 @@
 			onclick: () => (confirmingDelete = true)
 		}
 	]);
+
+	// Back from a saved edit: say so once, then drop the flag so a reload doesn't repeat it.
+	onMount(() => {
+		if (page.url.searchParams.has('saved')) {
+			toast.show('Changes saved');
+			const url = new URL(page.url.href);
+			url.searchParams.delete('saved');
+			replaceState(url, page.state);
+		}
+	});
 
 	/** Deleting leaves the page — the review is gone — for the journal, where the Undo message
 	 *  is still on screen (it lives in the root layout). Undo brings the review back and returns
@@ -243,9 +256,11 @@
 				</div>
 				{#if data.isOwnReview}
 					<div class="flex items-center gap-1.5">
-						<!-- Editing a published review isn't built yet — the wizard only creates. Shown
-						     disabled rather than hidden so the author can see it is coming. -->
-						<Button variant="ghost" disabled class="h-9 gap-1.5 px-3 text-sm">
+						<Button
+							variant="ghost"
+							href={`/review/${review.id}/edit`}
+							class="h-9 gap-1.5 bg-sunken px-3 text-sm text-ink"
+						>
 							<Icon name="pencil" size={15} />
 							Edit
 						</Button>

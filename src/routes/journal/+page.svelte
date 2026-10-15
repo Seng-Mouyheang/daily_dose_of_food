@@ -77,6 +77,7 @@
 			];
 		}
 		return [
+			{ label: 'Edit review', icon: 'pencil', href: `/review/${review.id}/edit` },
 			query.archived
 				? { label: 'Restore to journal', icon: 'restore', onclick: () => act('restore', review) }
 				: { label: 'Archive', icon: 'archive', onclick: () => act('archive', review) },
@@ -320,6 +321,15 @@
 							: `Your review · ${formatVisitDate(selected.visitedAt.slice(0, 10))}`}
 					</span>
 					<div class="flex items-center gap-2">
+						{#if !isBookmarks && !query.archived}
+							<a
+								href={`/review/${selected.id}/edit`}
+								class="inline-flex h-9 items-center gap-1.5 rounded-input bg-sunken px-3.5 text-sm font-semibold text-ink"
+							>
+								<Icon name="pencil" size={15} />
+								Edit
+							</a>
+						{/if}
 						<button
 							type="button"
 							onclick={() => act(rowKind, selected)}

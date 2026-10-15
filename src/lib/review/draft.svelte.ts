@@ -3,6 +3,7 @@
  *  mostly track the prototype's own `S` state object. */
 
 import { todayIso } from './format.ts';
+import type { ReviewDraftSnapshot } from './payload.ts';
 
 export type ReviewTypeChoice = 'dish' | 'beverage' | 'both';
 export type VisitType = 'dine_in' | 'takeaway' | 'delivery';
@@ -75,9 +76,12 @@ export interface PhotoDraft {
 	/** Cloudinary's own delivery URL — local display only, never sent to the server, which
 	 *  reconstructs the authoritative URL itself (see cloudinary.ts). */
 	previewUrl: string;
+	/** Already on the review being edited: sent back by publicId only, since there is no fresh
+	 *  Cloudinary signature for it (see updateReviewSchema). */
+	existing?: boolean;
 }
 
-function emptyItem(itemType: 'food' | 'drink'): ItemDraft {
+export function emptyItem(itemType: 'food' | 'drink'): ItemDraft {
 	return {
 		itemType,
 		itemName: '',
@@ -246,6 +250,13 @@ export class ReviewDraft {
 		} catch {
 			// Corrupt or inaccessible storage: start fresh rather than throw.
 		}
+	}
+
+	/** Fills the wizard from an existing review (see getReviewForEdit) and opens it on the
+	 *  Review step, where every section's Edit link jumps straight to that step. */
+	loadFrom(snapshot: ReviewDraftSnapshot) {
+		Object.assign(this, structuredClone(snapshot));
+		this.step = 4;
 	}
 
 	static clearLocalStorage() {
