@@ -1,23 +1,93 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
+	import ActionSheet, { type SheetAction } from '#lib/components/ActionSheet.svelte';
 	import Button from '#lib/components/Button.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { toast } from '#lib/components/toast.svelte.ts';
 	import Icon from '#lib/components/Icon.svelte';
 	import Tabs from '#lib/components/Tabs.svelte';
 	import JournalRow from '#lib/journal/JournalRow.svelte';
+	import {
+		JOURNAL_ACTIONS,
+		runJournalAction,
+		undoJournalAction,
+		type JournalActionKind
+	} from '#lib/journal/actions.ts';
 	import { JOURNAL_FILTERS, journalHref } from '#lib/journal/query.ts';
 	import FactsGrid from '#lib/review/FactsGrid.svelte';
 	import PhotoCarousel from '#lib/review/PhotoCarousel.svelte';
 	import RatingPanel from '#lib/review/RatingPanel.svelte';
 	import TagGroups from '#lib/review/TagGroups.svelte';
-	import { primaryItem, reviewTitle, totalBeforeTax } from '#lib/review/card.ts';
+	import { primaryItem, reviewTitle, totalBeforeTax, type FeedReview } from '#lib/review/card.ts';
 	import { formatVisitDate } from '#lib/review/format.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	const query = $derived(data.query);
-	const items = $derived(data.items);
 	const isBookmarks = $derived(query.tab === 'bookmarks');
+
+	// Rows taken out optimistically by an action, until the reload after it lands. Writable
+	// $derived: it empties itself whenever `data` reloads, when the server list is the truth.
+	let hidden = $derived.by<string[]>(() => {
+		void data.items;
+		return [];
+	});
+	const items = $derived(data.items.filter((r) => !hidden.includes(r.id)));
+
+	/* ------------------------------------ actions ------------------------------------- */
+
+	/** The one action a row offers in this list: Remove on Bookmarks, Restore in the archived
+	 *  view, Archive otherwise. Swiping reveals it; the ⋯ sheet and desktop pane repeat it. */
+	const rowKind = $derived<JournalActionKind>(
+		isBookmarks ? 'unsave' : query.archived ? 'restore' : 'archive'
+	);
+
+	/** Only one row's swipe action is open at a time. */
+	let openRow = $state<string | null>(null);
+	let sheetFor = $state<FeedReview | null>(null);
+	let confirmDelete = $state<FeedReview | null>(null);
+
+	async function act(kind: JournalActionKind, review: FeedReview) {
+		const spec = JOURNAL_ACTIONS[kind];
+		openRow = null;
+		hidden = [...hidden, review.id];
+		if (!(await runJournalAction(kind, review.id))) {
+			hidden = hidden.filter((id) => id !== review.id);
+			toast.show(spec.failed);
+			return;
+		}
+		toast.show(spec.done, async () => {
+			if (await undoJournalAction(kind, review.id)) await invalidate('app:journal');
+			else toast.show("Couldn't undo that. Try again.");
+		});
+		await invalidate('app:journal');
+	}
+
+	function sheetActions(review: FeedReview): SheetAction[] {
+		if (isBookmarks) {
+			return [
+				{ label: 'Open review', icon: 'book', href: `/review/${review.id}` },
+				{
+					label: 'Remove bookmark',
+					icon: 'bookmark',
+					danger: true,
+					onclick: () => act('unsave', review)
+				}
+			];
+		}
+		return [
+			query.archived
+				? { label: 'Restore to journal', icon: 'restore', onclick: () => act('restore', review) }
+				: { label: 'Archive', icon: 'archive', onclick: () => act('archive', review) },
+			{
+				label: 'Delete review',
+				icon: 'trash',
+				danger: true,
+				onclick: () => (confirmDelete = review)
+			}
+		];
+	}
 
 	const tabs = $derived([
 		{
@@ -176,6 +246,18 @@
 						showAuthor={isBookmarks}
 						selected={selected?.id === review.id}
 						onselect={selectRow}
+						action={{
+							label: JOURNAL_ACTIONS[rowKind].label,
+							icon: JOURNAL_ACTIONS[rowKind].icon,
+							tone: JOURNAL_ACTIONS[rowKind].tone,
+							run: () => act(rowKind, review)
+						}}
+						open={openRow === review.id}
+						onopenchange={(o) => (openRow = o ? review.id : null)}
+						onmore={() => {
+							openRow = null;
+							sheetFor = review;
+						}}
 					/>
 				</li>
 			{/each}
@@ -237,10 +319,31 @@
 							? `Saved from ${selected.author.displayName}`
 							: `Your review · ${formatVisitDate(selected.visitedAt.slice(0, 10))}`}
 					</span>
-					<Button href={`/review/${selected.id}`} class="h-9 gap-1.5 px-3.5 text-sm">
-						Open full review
-						<Icon name="chevR" size={16} weight={2.4} />
-					</Button>
+					<div class="flex items-center gap-2">
+						<button
+							type="button"
+							onclick={() => act(rowKind, selected)}
+							class="inline-flex h-9 items-center gap-1.5 rounded-input bg-sunken px-3.5 text-sm font-semibold text-ink"
+						>
+							<Icon name={JOURNAL_ACTIONS[rowKind].icon} size={16} />
+							{JOURNAL_ACTIONS[rowKind].label}
+						</button>
+						{#if !isBookmarks}
+							<button
+								type="button"
+								onclick={() => (confirmDelete = selected)}
+								aria-label="Delete review"
+								title="Delete review"
+								class="grid h-9 w-9 place-items-center rounded-input bg-bad-soft text-bad hover:brightness-95"
+							>
+								<Icon name="trash" size={18} />
+							</button>
+						{/if}
+						<Button href={`/review/${selected.id}`} class="h-9 gap-1.5 px-3.5 text-sm">
+							Open full review
+							<Icon name="chevR" size={16} weight={2.4} />
+						</Button>
+					</div>
 				</div>
 
 				{#if selected.photos.length}
@@ -295,3 +398,24 @@
 		{/if}
 	</section>
 </div>
+
+<ActionSheet
+	open={sheetFor !== null}
+	title={sheetFor ? reviewTitle(sheetFor) : ''}
+	actions={sheetFor ? sheetActions(sheetFor) : []}
+	onclose={() => (sheetFor = null)}
+/>
+
+<ConfirmDialog
+	open={confirmDelete !== null}
+	title="Delete this review?"
+	message={confirmDelete
+		? `“${reviewTitle(confirmDelete)}” will be removed from your journal and the feed, with its photos and ${confirmDelete.commentCount} ${confirmDelete.commentCount === 1 ? 'comment' : 'comments'}.`
+		: ''}
+	confirmLabel="Delete"
+	onconfirm={() => {
+		const review = confirmDelete;
+		if (review) act('delete', review);
+	}}
+	onclose={() => (confirmDelete = null)}
+/>

@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
+	import ActionSheet, { type SheetAction } from '#lib/components/ActionSheet.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { toast } from '#lib/components/toast.svelte.ts';
+	import { JOURNAL_ACTIONS, runJournalAction, undoJournalAction } from '#lib/journal/actions.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -122,6 +127,37 @@
 
 	const review = $derived(data.review);
 	const title = $derived(reviewTitle(review));
+
+	/* ------------------------- author actions: delete (and edit) ------------------------- */
+
+	let sheetOpen = $state(false);
+	let confirmingDelete = $state(false);
+
+	const ownActions = $derived<SheetAction[]>([
+		{
+			label: 'Delete review',
+			icon: 'trash',
+			danger: true,
+			onclick: () => (confirmingDelete = true)
+		}
+	]);
+
+	/** Deleting leaves the page — the review is gone — for the journal, where the Undo message
+	 *  is still on screen (it lives in the root layout). Undo brings the review back and returns
+	 *  here. */
+	async function deleteReview() {
+		const id = review.id;
+		const spec = JOURNAL_ACTIONS.delete;
+		if (!(await runJournalAction('delete', id))) {
+			toast.show(spec.failed);
+			return;
+		}
+		await goto('/journal');
+		toast.show(spec.done, async () => {
+			if (await undoJournalAction('delete', id)) await goto(`/review/${id}`);
+			else toast.show("Couldn't undo that. Try again.");
+		});
+	}
 	const item = $derived(primaryItem(review.items));
 	const total = $derived(totalWithTax(review.items));
 	const published = $derived(timeAgo(review.publishedAt ?? review.visitedAt));
@@ -163,13 +199,25 @@
 	<!-- Pinned so "back" is always one tap away on a long review. The solid background (bled out
 	     to the container edges) keeps scrolled content from showing through behind it. -->
 	<div class="sticky top-0 z-20 -mx-4 bg-bg px-4 pt-3 lg:-mx-8 lg:px-8">
-		<a
-			href="/"
-			class="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-accent-strong"
-		>
-			<Icon name="chevL" size={16} weight={2.2} />
-			Back to feed
-		</a>
+		<div class="flex items-center justify-between">
+			<a
+				href="/"
+				class="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-accent-strong"
+			>
+				<Icon name="chevL" size={16} weight={2.2} />
+				Back to feed
+			</a>
+			{#if data.isOwnReview}
+				<button
+					type="button"
+					onclick={() => (sheetOpen = true)}
+					aria-label="More options"
+					class="grid h-11 w-11 place-items-center rounded-input text-ink-2 hover:bg-sunken lg:hidden"
+				>
+					<Icon name="more" size={20} />
+				</button>
+			{/if}
+		</div>
 	</div>
 
 	<!-- One column on mobile, in the handoff's order. On desktop the gallery and location move
@@ -194,12 +242,23 @@
 					</p>
 				</div>
 				{#if data.isOwnReview}
-					<!-- Editing a published review isn't built yet — the wizard only creates. Shown
-					     disabled rather than hidden so the author can see it is coming. -->
-					<Button variant="ghost" disabled class="h-9 gap-1.5 px-3 text-sm">
-						<Icon name="pencil" size={15} />
-						Edit
-					</Button>
+					<div class="flex items-center gap-1.5">
+						<!-- Editing a published review isn't built yet — the wizard only creates. Shown
+						     disabled rather than hidden so the author can see it is coming. -->
+						<Button variant="ghost" disabled class="h-9 gap-1.5 px-3 text-sm">
+							<Icon name="pencil" size={15} />
+							Edit
+						</Button>
+						<button
+							type="button"
+							onclick={() => (confirmingDelete = true)}
+							aria-label="Delete review"
+							title="Delete review"
+							class="grid h-9 w-9 place-items-center rounded-input bg-bad-soft text-bad hover:brightness-95"
+						>
+							<Icon name="trash" size={18} />
+						</button>
+					</div>
 				{:else}
 					<Button variant="ghost" disabled class="h-9 px-3 text-sm">Follow</Button>
 				{/if}
@@ -505,3 +564,15 @@
 		</div>
 	</div>
 </div>
+
+{#if data.isOwnReview}
+	<ActionSheet open={sheetOpen} {title} actions={ownActions} onclose={() => (sheetOpen = false)} />
+	<ConfirmDialog
+		open={confirmingDelete}
+		title="Delete this review?"
+		message={`“${title}” will be removed from your journal and the feed, with its photos and ${review.commentCount} ${review.commentCount === 1 ? 'comment' : 'comments'}.`}
+		confirmLabel="Delete"
+		onconfirm={deleteReview}
+		onclose={() => (confirmingDelete = false)}
+	/>
+{/if}

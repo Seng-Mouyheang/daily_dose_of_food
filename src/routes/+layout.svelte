@@ -5,6 +5,7 @@
 	import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from 'svelte-clerk';
 	import Icon from '#lib/components/Icon.svelte';
 	import BottomTabBar from '#lib/components/BottomTabBar.svelte';
+	import Toast from '#lib/components/Toast.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -93,6 +94,8 @@
 	</header>
 
 	{@render children()}
+
+	<Toast />
 
 	<!-- Not on the wizard: its sticky Continue / Publish footer would sit under the bar at every
 	     scroll position but the very end, and it has its own mobile header with a back link. -->
