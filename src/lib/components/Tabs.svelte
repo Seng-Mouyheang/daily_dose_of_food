@@ -12,7 +12,8 @@
 		current,
 		ariaLabel
 	}: {
-		options: { value: string; label: string; href: string }[];
+		/** `count` adds a badge after the label (the journal's "My reviews 12"). */
+		options: { value: string; label: string; href: string; count?: number }[];
 		current: string;
 		ariaLabel: string;
 	} = $props();
@@ -29,6 +30,13 @@
 			}`}
 		>
 			{option.label}
+			{#if option.count !== undefined}
+				<span
+					class={`ml-1.5 rounded-full px-[7px] py-px text-xs font-bold tabular-nums ${
+						isCurrent ? 'bg-accent-soft text-accent-strong' : 'bg-sunken text-ink-2'
+					}`}>{option.count}</span
+				>
+			{/if}
 		</a>
 	{/each}
 </nav>

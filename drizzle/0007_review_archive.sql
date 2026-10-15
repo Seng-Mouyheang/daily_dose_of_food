@@ -1,0 +1,2 @@
+ALTER TABLE "reviews" ADD COLUMN "archived_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "idx_reviews_user_visited" ON "reviews" USING btree ("user_id","visited_at" DESC,"id" DESC) WHERE "reviews"."deleted_at" IS NULL;

@@ -9,11 +9,10 @@
 
 	let { children }: LayoutProps = $props();
 
-	// Explore/Favorites don't have pages yet, so they stay inert labels rather than dead links —
-	// matching the prototype's own desktop chrome, where only "Home" and "Write a review" are
-	// real links.
-	const navLabels = ['Explore', 'Favorites'];
+	// Explore doesn't have a page yet, so it stays an inert label rather than a dead link.
+	const navLabels = ['Explore'];
 	const isHome = $derived(page.url.pathname === '/');
+	const isJournal = $derived(page.url.pathname.startsWith('/journal'));
 	const isWriteReview = $derived(page.url.pathname.startsWith('/review/new'));
 </script>
 
@@ -49,6 +48,14 @@
 							>{label}</span
 						>
 					{/each}
+					<a
+						href="/journal"
+						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
+							isJournal ? 'border-accent text-ink' : 'border-transparent text-ink-2'
+						}`}
+					>
+						My journal
+					</a>
 					<a
 						href="/review/new"
 						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${

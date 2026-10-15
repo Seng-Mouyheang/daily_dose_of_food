@@ -61,7 +61,7 @@ import {
 /** Postgres `numeric` arrives as a string to avoid the precision loss of a float. Every value
  *  we read it for (a 1-5 rating, a price, a tax percent) is well inside a double's exact range,
  *  so converting here is safe and spares every caller the coercion. */
-function toNumber(value: string | null): number | null {
+export function toNumber(value: string | null): number | null {
 	if (value === null) return null;
 	const n = Number(value);
 	return Number.isFinite(n) ? n : null;
@@ -143,6 +143,7 @@ export async function getReviewSpine(reviewId: string) {
 			visibility: reviews.visibility,
 			reviewStatus: reviews.reviewStatus,
 			deletedAt: reviews.deletedAt,
+			archivedAt: reviews.archivedAt,
 			reviewType: reviews.reviewType,
 			visitType: reviews.visitType,
 			mealType: reviews.mealType,
@@ -168,12 +169,12 @@ export async function getReviewSpine(reviewId: string) {
 	return row ?? null;
 }
 
-type SpineRow = NonNullable<Awaited<ReturnType<typeof getReviewSpine>>>;
+export type SpineRow = NonNullable<Awaited<ReturnType<typeof getReviewSpine>>>;
 
 /**
  * Whether `viewerId` (null when signed out) may see — and so interact with — this review. Public
  * and published is visible to everyone; anything else (a draft, hidden or removed by moderation,
- * soft-deleted, or friends/private) only to its own author. The caller turns a `false` into a
+ * soft-deleted, archived by its author, or friends/private) only to its own author. The caller turns a `false` into a
  * 404, the same response as "no such review", so a guessed id can't tell "private" from
  * "doesn't exist". 'friends' still behaves like 'private' until follows exist.
  *
@@ -181,11 +182,15 @@ type SpineRow = NonNullable<Awaited<ReturnType<typeof getReviewSpine>>>;
  * so a private review can never be liked or commented on by someone who guessed its id.
  */
 export function canViewReview(
-	row: Pick<SpineRow, 'visibility' | 'reviewStatus' | 'deletedAt' | 'userId'>,
+	row: Pick<SpineRow, 'visibility' | 'reviewStatus' | 'deletedAt' | 'archivedAt' | 'userId'>,
 	viewerId: string | null
 ): boolean {
+	// An archived review is the author's alone again, like a private one.
 	const isPublic =
-		row.visibility === 'public' && row.reviewStatus === 'published' && row.deletedAt === null;
+		row.visibility === 'public' &&
+		row.reviewStatus === 'published' &&
+		row.deletedAt === null &&
+		row.archivedAt === null;
 	return isPublic || (viewerId !== null && viewerId === row.userId);
 }
 
@@ -200,7 +205,7 @@ export async function requireVisibleReview(locals: App.Locals, reviewId: string)
 	return { user, row };
 }
 
-interface Children {
+export interface Children {
 	photos: Map<string, FeedPhoto[]>;
 	items: Map<string, FeedItem[]>;
 	tags: Map<string, ReviewCardTag[]>;
@@ -507,6 +512,7 @@ export async function getForYouFeed(
 		eq(reviews.visibility, 'public'),
 		eq(reviews.reviewStatus, 'published'),
 		isNull(reviews.deletedAt),
+		isNull(reviews.archivedAt),
 		// A soft-deleted author's reviews drop out of the feed with them, rather than showing a
 		// card for someone who no longer exists.
 		isNull(users.deletedAt)
@@ -526,6 +532,7 @@ export async function getForYouFeed(
 			visibility: reviews.visibility,
 			reviewStatus: reviews.reviewStatus,
 			deletedAt: reviews.deletedAt,
+			archivedAt: reviews.archivedAt,
 			reviewType: reviews.reviewType,
 			visitType: reviews.visitType,
 			mealType: reviews.mealType,
@@ -664,6 +671,7 @@ export async function getMonthlyStats(
 		eq(reviews.userId, userId),
 		eq(reviews.reviewStatus, 'published'),
 		isNull(reviews.deletedAt),
+		isNull(reviews.archivedAt),
 		gte(reviews.publishedAt, monthStart),
 		lte(reviews.publishedAt, monthEnd)
 	);
