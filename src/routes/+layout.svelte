@@ -14,6 +14,7 @@
 	const navLabels = ['Explore'];
 	const isHome = $derived(page.url.pathname === '/');
 	const isJournal = $derived(page.url.pathname.startsWith('/journal'));
+	const isDashboard = $derived(page.url.pathname.startsWith('/dashboard'));
 	const isWriteReview = $derived(page.url.pathname.startsWith('/review/new'));
 	// The wizard, whether writing or editing: both have their own sticky footer and back link.
 	const isWizard = $derived(isWriteReview || /^\/review\/[^/]+\/edit$/.test(page.url.pathname));
@@ -58,6 +59,14 @@
 						}`}
 					>
 						My journal
+					</a>
+					<a
+						href="/dashboard"
+						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
+							isDashboard ? 'border-accent text-ink' : 'border-transparent text-ink-2'
+						}`}
+					>
+						Dashboard
 					</a>
 					<a
 						href="/review/new"
