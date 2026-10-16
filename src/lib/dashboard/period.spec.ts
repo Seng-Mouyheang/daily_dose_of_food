@@ -71,6 +71,9 @@ describe('canGoBack', () => {
 		expect(canGoBack(periodFor('month', 0, '2026-10-16'), '2026-09-20')).toBe(true);
 		expect(canGoBack(periodFor('month', -1, '2026-10-16'), '2026-09-20')).toBe(false);
 		expect(canGoBack(periodFor('month', 0, '2026-10-16'), null)).toBe(false);
+		// From two months back (August), July still holds a log.
+		expect(canGoBack(periodFor('month', -2, '2026-10-16'), '2026-07-10')).toBe(true);
+		expect(canGoBack(periodFor('month', -3, '2026-10-16'), '2026-07-10')).toBe(false);
 	});
 });
 

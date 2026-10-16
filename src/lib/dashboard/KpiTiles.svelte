@@ -20,15 +20,18 @@
 				? period.prev.name.slice(0, 3)
 				: period.prev.name
 	);
+
+	type Change = { now: number; prev: number; format: (n: number) => string; unit?: number };
+	/** A change to show under a tile, or null when there's nothing to compare with. */
+	const change = (
+		now: number | null,
+		prev: number | null,
+		format: Change['format'],
+		unit?: number
+	) => (hasPrev && now !== null && prev !== null ? { now, prev, format, unit } : null);
 </script>
 
-{#snippet tile(
-	label: string,
-	value: string,
-	star: boolean,
-	delta: import('svelte').Snippet | null,
-	sub = ''
-)}
+{#snippet tile(label: string, value: string, star: boolean, delta: Change | null, sub = '')}
 	<div
 		class="flex min-w-0 flex-col justify-center gap-0.5 rounded-tile border border-line bg-surface px-3.5 py-3 lg:px-4.5"
 	>
@@ -46,45 +49,29 @@
 				>{/if}{value}
 		</b>
 		<span class="truncate text-xs text-ink-3"
-			>{#if delta}{@render delta()}{:else}{sub}&nbsp;{/if}</span
+			>{#if delta}<Delta {...delta} {vs} />{:else}{sub}&nbsp;{/if}</span
 		>
 	</div>
 {/snippet}
 
-{#snippet meals()}<Delta
-		now={kpis.meals.now}
-		prev={kpis.meals.prev}
-		format={String}
-		unit={1}
-		{vs}
-	/>{/snippet}
-{#snippet avgPrice()}<Delta
-		now={kpis.avgPrice.now ?? 0}
-		prev={kpis.avgPrice.prev ?? 0}
-		format={money}
-		{vs}
-	/>{/snippet}
-{#snippet avgRating()}<Delta
-		now={kpis.avgRating.now ?? 0}
-		prev={kpis.avgRating.prev ?? 0}
-		format={(n) => n.toFixed(1)}
-		unit={0.05}
-		{vs}
-	/>{/snippet}
-
 <div class="grid h-full grid-cols-2 gap-2.5 lg:grid-rows-2">
-	{@render tile('Meals logged', String(kpis.meals.now), false, hasPrev ? meals : null)}
+	{@render tile(
+		'Meals logged',
+		String(kpis.meals.now),
+		false,
+		change(kpis.meals.now, kpis.meals.prev, String, 1)
+	)}
 	{@render tile(
 		'Avg per meal',
 		kpis.avgPrice.now === null ? '—' : money(kpis.avgPrice.now),
 		false,
-		hasPrev && kpis.avgPrice.now !== null && kpis.avgPrice.prev !== null ? avgPrice : null
+		change(kpis.avgPrice.now, kpis.avgPrice.prev, money)
 	)}
 	{@render tile(
 		'Avg rating',
 		kpis.avgRating.now === null ? '—' : kpis.avgRating.now.toFixed(1),
 		kpis.avgRating.now !== null,
-		hasPrev && kpis.avgRating.now !== null && kpis.avgRating.prev !== null ? avgRating : null
+		change(kpis.avgRating.now, kpis.avgRating.prev, (n) => n.toFixed(1), 0.05)
 	)}
 	{@render tile(
 		'New places',

@@ -62,7 +62,7 @@ export function dashboardHref({ per, off }: DashboardQuery): string {
 const toMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
 const toIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 export const addDays = (iso: string, n: number) => toIso(toMs(iso) + n * DAY);
-export const daysBetween = (a: string, b: string) => Math.round((toMs(b) - toMs(a)) / DAY);
+const daysBetween = (a: string, b: string) => Math.round((toMs(b) - toMs(a)) / DAY);
 
 /** First and last day of the period `off` steps from the one containing `today`. */
 export function rangeFor(per: Per, off: number, today: string): { start: string; end: string } {
@@ -122,7 +122,7 @@ export function periodFor(per: Per, off: number, today: string): Period {
 
 /** Whether stepping back still lands on a period that contains a log. */
 export const canGoBack = (period: Period, firstLog: string | null) =>
-	firstLog !== null && rangeFor(period.per, period.off - 1, period.end).end >= firstLog;
+	firstLog !== null && rangeFor(period.per, -1, period.start).end >= firstLog;
 
 /** Today's date in `tz` as "YYYY-MM-DD" ('en-CA' formats that way, as in format.ts todayIso). */
 export const todayIn = (tz: string, now = new Date()) =>
