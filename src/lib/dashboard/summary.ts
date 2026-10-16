@@ -4,7 +4,7 @@
  * counts them. Numbers only — formatting and copy belong to the components.
  */
 import { MEAL_LABEL, VISIT_LABEL } from '#lib/review/card.ts';
-import { addDays, type Period } from './period.ts';
+import { addDays, daysBetween, type Period } from './period.ts';
 
 export interface DashItem {
 	/** Food type or drink type name; null when the item has none. */
@@ -41,8 +41,9 @@ export interface Bar {
 	value: number;
 	count: number;
 }
+export type Grain = 'day' | 'week' | 'month';
 export interface Bucket {
-	/** A date for daily buckets, "YYYY-MM" for monthly ones. */
+	/** A date for daily and weekly buckets (the week's first day), "YYYY-MM" for monthly ones. */
 	key: string;
 	value: number;
 	count: number;
@@ -54,6 +55,9 @@ const mean = (xs: number[]) => (xs.length ? sum(xs, (x) => x) / xs.length : null
 export const logPrice = (l: DashLog) => sum(l.items, (i) => i.price);
 
 const BUDGET_FACTOR = { week: 12 / 52, month: 1, year: 12 };
+/** Months-worth of budget a period gets; a custom range is the monthly budget scaled by days. */
+const budgetFactor = (p: Period) =>
+	p.per === 'custom' ? (12 / 365) * p.length : BUDGET_FACTOR[p.per];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const TOP = 5;
 
@@ -106,26 +110,40 @@ export function niceTop(max: number): number {
 	return Math.max(step, Math.ceil(max / step) * step);
 }
 
-function trend(logs: DashLog[], period: Period, today: string): Bucket[] {
+/** Bars per day; custom ranges over 62 days go weekly, over 182 monthly (as does a year). */
+export function grainFor(period: Period): Grain {
+	if (period.per === 'year' || (period.per === 'custom' && period.length > 182)) return 'month';
+	return period.per === 'custom' && period.length > 62 ? 'week' : 'day';
+}
+
+function trend(logs: DashLog[], period: Period, today: string, grain: Grain): Bucket[] {
+	const keys: string[] = [];
+	if (grain === 'month')
+		for (let m = period.start.slice(0, 7); m <= period.end.slice(0, 7);) {
+			keys.push(m);
+			m = addDays(`${m}-28`, 7).slice(0, 7);
+		}
+	else
+		for (let i = 0; i < period.length; i += grain === 'week' ? 7 : 1)
+			keys.push(addDays(period.start, i));
+	const keyOf = (date: string) =>
+		grain === 'month'
+			? date.slice(0, 7)
+			: grain === 'week'
+				? addDays(period.start, Math.floor(daysBetween(period.start, date) / 7) * 7)
+				: date;
 	const byKey = new Map<string, { value: number; count: number }>();
-	const keyOf = (date: string) => (period.per === 'year' ? date.slice(0, 7) : date);
 	for (const l of logs) {
-		const b = byKey.get(keyOf(l.date)) ?? { value: 0, count: 0 };
+		const key = keyOf(l.date);
+		const b = byKey.get(key) ?? { value: 0, count: 0 };
 		b.value += logPrice(l);
 		b.count++;
-		byKey.set(keyOf(l.date), b);
+		byKey.set(key, b);
 	}
-	const keys =
-		period.per === 'year'
-			? Array.from(
-					{ length: 12 },
-					(_, m) => `${period.start.slice(0, 4)}-${String(m + 1).padStart(2, '0')}`
-				)
-			: Array.from({ length: period.length }, (_, d) => addDays(period.start, d));
 	return keys.map((key) => ({
 		key,
 		...(byKey.get(key) ?? { value: 0, count: 0 }),
-		future: key > keyOf(today)
+		future: key > (grain === 'month' ? today.slice(0, 7) : today)
 	}));
 }
 
@@ -141,15 +159,15 @@ export function summarize(input: {
 	const { logs, prevLogs, period, today } = input;
 	const spent = sum(logs, logPrice);
 	const prevSpent = sum(prevLogs, logPrice);
-	const budget =
-		input.monthlyBudget === null ? null : input.monthlyBudget * BUDGET_FACTOR[period.per];
+	const budget = input.monthlyBudget === null ? null : input.monthlyBudget * budgetFactor(period);
 
 	const places = new Set(logs.map((l) => l.placeId));
 	const newPlaces = [...places].filter(
 		(p) => (input.firstVisitByPlace.get(p) ?? '') >= period.start
 	).length;
 
-	const buckets = trend(logs, period, today);
+	const grain = grainFor(period);
+	const buckets = trend(logs, period, today, grain);
 	const past = buckets.filter((b) => !b.future);
 	const peak = past.reduce<Bucket | null>((m, b) => (b.value > (m?.value ?? 0) ? b : m), null);
 
@@ -207,6 +225,7 @@ export function summarize(input: {
 			placeCount: places.size
 		},
 		trend: {
+			grain,
 			buckets,
 			avg: mean(past.map((b) => b.value)) ?? 0,
 			top: niceTop(Math.max(0, ...buckets.map((b) => b.value))),

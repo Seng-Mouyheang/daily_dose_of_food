@@ -20,8 +20,17 @@
 
 	let editing = $state(false);
 
+	/** Less than last period is good (green), more is bad (red), the same stays neutral. */
+	const chip = $derived(
+		Math.abs(spend.spent - spend.prevSpent) < 0.005
+			? 'bg-sunken text-ink-2'
+			: spend.spent < spend.prevSpent
+				? 'bg-good-soft text-good'
+				: 'bg-bad-soft text-bad'
+	);
 	const over = $derived(spend.budget !== null && spend.spent > spend.budget);
 	const used = $derived(spend.budget ? spend.spent / spend.budget : 0);
+	const custom = $derived(period.per === 'custom');
 	const unit = $derived(
 		period.per === 'week' ? 'weekly' : period.per === 'month' ? 'monthly' : 'yearly'
 	);
@@ -40,14 +49,13 @@
 		</h2>
 		{#if hasPrev}
 			<span
-				class="rounded-full bg-sunken px-2.5 py-1 text-[12.5px] font-semibold text-ink-2 tabular-nums"
+				class="inline-flex flex-none items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-semibold whitespace-nowrap tabular-nums {chip}"
 			>
-				<Delta
-					now={spend.spent}
-					prev={spend.prevSpent}
-					format={money}
-				/>{#if spend.prevSpent && Math.abs(spend.spent - spend.prevSpent) >= 0.005}
-					· {pct(Math.abs(spend.spent - spend.prevSpent), spend.prevSpent)}%{/if}
+				<Delta now={spend.spent} prev={spend.prevSpent} format={money} />
+				{#if spend.prevSpent && Math.abs(spend.spent - spend.prevSpent) >= 0.005}
+					<span aria-hidden="true">·</span>
+					<span>{pct(Math.abs(spend.spent - spend.prevSpent), spend.prevSpent)}%</span>
+				{/if}
 			</span>
 		{/if}
 	</div>
@@ -74,15 +82,17 @@
 		<div
 			class="relative mt-5 h-2.5 rounded-full bg-track"
 			role="img"
-			aria-label="{Math.round(used * 100)}% of your {money0(spend.budget)} {unit} budget used"
+			aria-label="{Math.round(used * 100)}% of your {money0(spend.budget)} {custom
+				? `budget for ${period.length} days`
+				: `${unit} budget`} used"
 		>
 			<span
-				class={`absolute inset-y-0 left-0 rounded-full ${over ? 'bg-bad' : 'bg-accent'}`}
+				class={`absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300 ${over ? 'bg-bad' : 'bg-accent'}`}
 				style:width="{Math.min(100, used * 100)}%"
 			></span>
 			{#if spend.expected !== null}
 				<span
-					class="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-sm bg-ink"
+					class="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-sm bg-ink transition-[left] duration-300"
 					style:left="{(spend.expected / spend.budget) * 100}%"
 					title="Where an even pace would put you today ({money0(spend.expected)})"
 				>
@@ -96,7 +106,8 @@
 		<div class="mt-1.5 flex justify-between gap-2.5 text-[13px] text-ink-2">
 			<span>
 				{#if over}
-					<b class="font-semibold text-bad">{money(spend.spent - spend.budget)} over</b> your {unit} budget
+					<b class="font-semibold text-bad">{money(spend.spent - spend.budget)} over</b>
+					{custom ? 'budget' : `your ${unit} budget`}
 				{:else if period.live}
 					<b class="font-semibold text-ink">{money(spend.budget - spend.spent)} left</b> · {spend.daysLeft}
 					day{spend.daysLeft === 1 ? '' : 's'} to go
@@ -107,8 +118,11 @@
 			<button
 				type="button"
 				onclick={() => (editing = true)}
+				title={custom && monthlyBudget !== null
+					? `Your ${money0(monthlyBudget)} monthly budget, scaled to ${period.length} days`
+					: undefined}
 				class="min-h-6 font-medium hover:text-ink hover:underline"
-				>{money0(spend.budget)} budget</button
+				>{money0(spend.budget)} budget{custom ? ` for ${period.length} days` : ''}</button
 			>
 		</div>
 		{#if period.live && spend.daysLeft > 0}

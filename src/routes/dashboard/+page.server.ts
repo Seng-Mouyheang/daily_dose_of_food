@@ -20,8 +20,13 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 
 	const tz = userTimeZone(cookies);
 	const today = todayIn(tz);
-	const query = parseDashboardQuery(url.searchParams);
-	const period = periodFor(query.per, query.off, today);
+	const query = parseDashboardQuery(url.searchParams, today);
+	const period = periodFor(
+		query.per,
+		query.off,
+		today,
+		query.from ? { from: query.from, to: query.to! } : undefined
+	);
 
 	// One fetch from the start of the comparison period to the end of this one.
 	const { logs, firstVisitByPlace, firstLog } = await getDashboardData(
@@ -32,21 +37,25 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 	);
 	const inside = (from: string, to: string) => logs.filter((l) => l.date >= from && l.date <= to);
 
+	const summary = summarize({
+		logs: inside(period.start, period.live ? today : period.end),
+		prevLogs: inside(period.prev.start, period.prev.end),
+		period,
+		today,
+		monthlyBudget: toNumber(user.monthlyBudget),
+		firstVisitByPlace
+	});
+
 	return {
 		query,
 		period,
 		hasLogs: firstLog !== null,
+		firstLog,
+		today,
 		canBack: canGoBack(period, firstLog),
 		canForward: query.off < 0,
 		monthlyBudget: toNumber(user.monthlyBudget),
-		summary: summarize({
-			logs: inside(period.start, period.live ? today : period.end),
-			prevLogs: inside(period.prev.start, period.prev.end),
-			period,
-			today,
-			monthlyBudget: toNumber(user.monthlyBudget),
-			firstVisitByPlace
-		})
+		summary
 	};
 };
 

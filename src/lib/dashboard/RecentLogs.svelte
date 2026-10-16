@@ -15,17 +15,17 @@
 		<h2 id="recent-h" class="font-display text-[17px] font-semibold">Recent logs</h2>
 		<a
 			href="/journal"
-			class="inline-flex min-h-11 items-center gap-1 rounded-input px-1.5 text-sm font-semibold text-accent-strong hover:bg-accent-soft"
+			class="inline-flex min-h-11 items-center gap-1 px-1.5 text-sm font-semibold text-accent-strong hover:underline"
 			>See all<Icon name="chevR" size={16} weight={2.4} /></a
 		>
 	</div>
 	{#if recent.length}
-		<ul class="-mx-2 flex flex-col divide-y divide-line">
+		<ul class="-mx-2 flex flex-1 flex-col">
 			{#each recent as l (l.id)}
-				<li>
+				<li class="flex-1">
 					<a
 						href="/review/{l.id}"
-						class="flex min-h-11 items-center gap-3 rounded-input p-2 hover:bg-sunken"
+						class="flex h-full min-h-11 items-center gap-3 rounded-input p-2 hover:bg-sunken"
 					>
 						<span
 							class="grid h-10 w-10 flex-none place-items-center rounded-[11px] bg-sunken text-ink-3"
@@ -39,10 +39,10 @@
 						<span class="flex min-w-0 flex-1 flex-col">
 							<b class="truncate text-[14.5px] font-semibold">{l.title}</b>
 							<small class="truncate text-[12.5px] text-ink-3"
-								>{l.placeName}, {shortDate(l.date)}</small
+								>{l.placeName} · {shortDate(l.date)}</small
 							>
 						</span>
-						<span class="flex flex-col items-end font-semibold tabular-nums">
+						<span class="flex flex-col items-end pr-3 font-semibold tabular-nums">
 							{money(logPrice(l))}
 							<small
 								class="flex items-center gap-0.5 text-xs text-ink-2"

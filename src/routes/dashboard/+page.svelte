@@ -16,6 +16,14 @@
 	const s = $derived(data.summary);
 	// The previous period has data to compare with exactly when stepping back is allowed.
 	const hasPrev = $derived(data.canBack);
+
+	// The dashboard scrolls the page itself, so the themed thin scrollbar goes on <html>; taken
+	// off again on leaving so other pages keep their own scrollbar.
+	$effect(() => {
+		const root = document.documentElement;
+		root.classList.add('thin-scroll');
+		return () => root.classList.remove('thin-scroll');
+	});
 </script>
 
 <svelte:head><title>Dashboard · Daily Dose of Food</title></svelte:head>
@@ -33,7 +41,13 @@
 			</p>
 		</div>
 		{#if data.hasLogs}
-			<PeriodBar period={data.period} canBack={data.canBack} canForward={data.canForward} />
+			<PeriodBar
+				period={data.period}
+				canBack={data.canBack}
+				canForward={data.canForward}
+				today={data.today}
+				firstLog={data.firstLog!}
+			/>
 		{/if}
 	</header>
 

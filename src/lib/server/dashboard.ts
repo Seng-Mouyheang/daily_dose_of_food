@@ -107,14 +107,18 @@ export async function getDashboardData(userId: string, from: Date, to: Date, tz:
 	for (const r of foodTypeRows)
 		if (!foodTypeOf.has(r.reviewItemId)) foodTypeOf.set(r.reviewItemId, r.name);
 
+	// Grouped once, so each review looks up its own ratings instead of scanning all of them.
+	const ratingsOf = new Map<string, typeof ratingRows>();
+	for (const x of ratingRows) ratingsOf.set(x.reviewId, [...(ratingsOf.get(x.reviewId) ?? []), x]);
+
 	const itemsOf = new Map<string, typeof items>();
 	for (const i of items) itemsOf.set(i.reviewId, [...(itemsOf.get(i.reviewId) ?? []), i]);
 
 	const logs: DashLog[] = spine.map((r) => {
 		const own = itemsOf.get(r.id) ?? [];
 		const score = (slugs: readonly string[]) => {
-			const vals = ratingRows
-				.filter((x) => x.reviewId === r.id && slugs.includes(x.slug))
+			const vals = (ratingsOf.get(r.id) ?? [])
+				.filter((x) => slugs.includes(x.slug))
 				.flatMap((x) => (toNumber(x.value) === null ? [] : [toNumber(x.value)!]));
 			return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 		};

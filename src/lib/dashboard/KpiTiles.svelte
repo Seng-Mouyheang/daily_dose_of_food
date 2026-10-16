@@ -12,23 +12,32 @@
 	}: { kpis: DashboardSummary['kpis']; period: Period; hasPrev: boolean } = $props();
 
 	const vs = $derived(
-		period.per === 'week'
-			? period.off === 0
-				? 'last wk'
-				: 'wk before'
-			: period.per === 'month'
-				? period.prev.name.slice(0, 3)
-				: period.prev.name
+		period.per === 'custom'
+			? 'prev period'
+			: period.per === 'week'
+				? period.off === 0
+					? 'last week'
+					: 'the week before'
+				: period.per === 'month'
+					? period.prev.name.slice(0, 3)
+					: period.prev.name
 	);
 
-	type Change = { now: number; prev: number; format: (n: number) => string; unit?: number };
+	type Change = {
+		now: number;
+		prev: number;
+		format: (n: number) => string;
+		unit?: number;
+		better?: 'up' | 'down';
+	};
 	/** A change to show under a tile, or null when there's nothing to compare with. */
 	const change = (
 		now: number | null,
 		prev: number | null,
 		format: Change['format'],
-		unit?: number
-	) => (hasPrev && now !== null && prev !== null ? { now, prev, format, unit } : null);
+		unit?: number,
+		better?: Change['better']
+	) => (hasPrev && now !== null && prev !== null ? { now, prev, format, unit, better } : null);
 </script>
 
 {#snippet tile(label: string, value: string, star: boolean, delta: Change | null, sub = '')}
@@ -59,19 +68,19 @@
 		'Meals logged',
 		String(kpis.meals.now),
 		false,
-		change(kpis.meals.now, kpis.meals.prev, String, 1)
+		change(kpis.meals.now, kpis.meals.prev, String, 1, 'down')
 	)}
 	{@render tile(
 		'Avg per meal',
 		kpis.avgPrice.now === null ? '—' : money(kpis.avgPrice.now),
 		false,
-		change(kpis.avgPrice.now, kpis.avgPrice.prev, money)
+		change(kpis.avgPrice.now, kpis.avgPrice.prev, money, undefined, 'down')
 	)}
 	{@render tile(
 		'Avg rating',
 		kpis.avgRating.now === null ? '—' : kpis.avgRating.now.toFixed(1),
 		kpis.avgRating.now !== null,
-		change(kpis.avgRating.now, kpis.avgRating.prev, (n) => n.toFixed(1), 0.05)
+		change(kpis.avgRating.now, kpis.avgRating.prev, (n) => n.toFixed(1), 0.05, 'up')
 	)}
 	{@render tile(
 		'New places',

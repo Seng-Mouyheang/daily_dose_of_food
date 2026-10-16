@@ -15,7 +15,7 @@
 		<span class="text-[12.5px] text-ink-3">By visits</span>
 	</div>
 	{#if regulars.length}
-		<ol class="flex flex-col gap-3">
+		<ol class="flex flex-1 flex-col justify-between gap-3">
 			{#each regulars as p, i (p.id)}
 				<li class="flex items-center gap-2.5 text-sm font-semibold">
 					<span

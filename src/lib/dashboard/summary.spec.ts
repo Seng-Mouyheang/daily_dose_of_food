@@ -164,3 +164,36 @@ describe('niceTop', () => {
 		expect(niceTop(1234)).toBe(1300);
 	});
 });
+
+describe('custom ranges', () => {
+	const custom = (from: string, to: string) => periodFor('custom', 0, '2026-10-16', { from, to });
+	it('scales the monthly budget to the number of days', () => {
+		const s = run([], { period: custom('2026-09-08', '2026-10-05') });
+		expect(Math.round(s.spend.budget!)).toBe(322);
+		expect(s.spend.expected).toBeNull();
+	});
+	it('switches bar grain with range length, and the bars still add up', () => {
+		const logs = [
+			log({ date: '2026-05-01' }),
+			log({ date: '2026-08-20' }),
+			log({ date: '2026-10-05' })
+		];
+		const grain = (from: string) => run(logs, { period: custom(from, '2026-10-05') }).trend;
+		expect(grain('2026-08-05').grain).toBe('day'); // 62 days
+		const week = grain('2026-08-04'); // 63 days
+		expect(week.grain).toBe('week');
+		expect(week.buckets).toHaveLength(9);
+		const month = grain('2026-04-05'); // 184 days
+		expect(month.grain).toBe('month');
+		expect(month.buckets.map((b) => b.key)).toEqual([
+			'2026-04',
+			'2026-05',
+			'2026-06',
+			'2026-07',
+			'2026-08',
+			'2026-09',
+			'2026-10'
+		]);
+		expect(month.buckets.reduce((t, b) => t + b.value, 0)).toBe(30);
+	});
+});

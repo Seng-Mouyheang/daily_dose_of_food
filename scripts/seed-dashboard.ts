@@ -56,6 +56,13 @@ const drinkTypeId = byKey<'name', number>(await db.select().from(schema.drinkTyp
 const categoryId = byKey<'slug', number>(await db.select().from(schema.ratingCategories), 'slug');
 if (!placeId.size || !categoryId.size)
 	throw new Error('Lookups or places missing. Run `pnpm db:seed` first.');
+/** The id for `key`, or stop before inserting anything if the lookup row doesn't exist. */
+const need = <V>(map: Map<string, V>, key: string, what: string): V => {
+	const id = map.get(key);
+	if (id === undefined)
+		throw new Error(`No ${what} "${key}" in the database. Run \`pnpm db:seed\` first.`);
+	return id;
+};
 
 // From the first of this month a year ago, through yesterday.
 const now = new Date();
@@ -81,7 +88,7 @@ for (const r of seed) {
 	rows.reviews.push({
 		id: reviewId,
 		userId: user.id,
-		placeId: placeId.get(r.placeSlug)!,
+		placeId: need(placeId, r.placeSlug, 'place'),
 		reviewType: r.item.isDrink ? 'drink' : 'food',
 		visitType: r.visitType,
 		mealType: r.mealType,
@@ -103,15 +110,18 @@ for (const r of seed) {
 		currencyCode: 'USD'
 	});
 	if (r.item.isDrink)
-		rows.drink.push({ reviewItemId: itemId, drinkTypeId: drinkTypeId.get(r.item.kind) });
+		rows.drink.push({
+			reviewItemId: itemId,
+			drinkTypeId: need(drinkTypeId, r.item.kind, 'drink type')
+		});
 	else {
 		rows.food.push({
 			reviewItemId: itemId,
-			cuisineTypeId: cuisineId.get(r.item.cuisine!)
+			cuisineTypeId: need(cuisineId, r.item.cuisine!, 'cuisine')
 		});
 		rows.foodTypes.push({
 			reviewItemId: itemId,
-			foodTypeId: foodTypeId.get(r.item.kind)!
+			foodTypeId: need(foodTypeId, r.item.kind, 'food type')
 		});
 	}
 	for (const [slug, value] of Object.entries(r.scores)) {
@@ -119,7 +129,7 @@ for (const r of seed) {
 		rows.ratings.push({
 			reviewId,
 			reviewItemId: itemLevel ? itemId : null,
-			ratingCategoryId: categoryId.get(slug)!,
+			ratingCategoryId: need(categoryId, slug, 'rating category'),
 			ratingValue: value.toFixed(1)
 		});
 	}
@@ -138,16 +148,21 @@ try {
 	await insertAll(drinkItemDetails, rows.drink);
 	await insertAll(reviewCategoryRatings, rows.ratings);
 } catch (e) {
-	// Leave nothing half-seeded: children cascade with their reviews.
-	await db.delete(reviews).where(
-		and(
-			mine,
-			inArray(
-				reviews.id,
-				rows.reviews.map((r) => r.id!)
+	// Leave nothing half-seeded: children cascade with their reviews. A failed cleanup is
+	// reported, but the original error is the one that explains what went wrong.
+	try {
+		await db.delete(reviews).where(
+			and(
+				mine,
+				inArray(
+					reviews.id,
+					rows.reviews.map((r) => r.id!)
+				)
 			)
-		)
-	);
+		);
+	} catch (cleanup) {
+		console.error('Cleanup failed; run with --remove to clear partial data.', cleanup);
+	}
 	throw e;
 }
 console.log(`Seeded ${seed.length} private reviews for ${email}, ${from} to ${to}.`);
