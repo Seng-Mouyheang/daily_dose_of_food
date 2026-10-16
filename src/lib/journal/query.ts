@@ -7,7 +7,16 @@
 import { z } from 'zod';
 
 export type JournalTab = 'reviews' | 'bookmarks';
-export type JournalSort = 'newest' | 'top';
+export type JournalSort = 'newest' | 'oldest' | 'top' | 'lowest' | 'price_desc' | 'price_asc';
+
+export const JOURNAL_SORTS: { value: JournalSort; label: string; short?: string }[] = [
+	{ value: 'newest', label: 'Newest' },
+	{ value: 'oldest', label: 'Oldest' },
+	{ value: 'top', label: 'Highest rated' },
+	{ value: 'lowest', label: 'Lowest rated' },
+	{ value: 'price_desc', label: 'Price: high to low', short: 'Price: high' },
+	{ value: 'price_asc', label: 'Price: low to high', short: 'Price: low' }
+];
 export type JournalFilter = 'all' | 'favorites' | 'dishes' | 'drinks';
 
 export const JOURNAL_FILTERS: { value: JournalFilter; label: string }[] = [
@@ -17,11 +26,11 @@ export const JOURNAL_FILTERS: { value: JournalFilter; label: string }[] = [
 	{ value: 'drinks', label: 'Drinks' }
 ];
 
-/** Keyset position: the sort date and id, plus the rating when sorted by Top rated. */
+/** Keyset position: the sort date and id, plus the rating or price when sorted by one. */
 export interface JournalCursor {
 	t: string;
 	id: string;
-	r?: number;
+	v?: number;
 }
 
 export interface JournalQuery {
@@ -41,7 +50,7 @@ const MAX_QUERY_LENGTH = 100;
 const cursorSchema = z.object({
 	t: z.iso.datetime(),
 	id: z.uuid(),
-	r: z.number().min(1).max(5).optional()
+	v: z.number().min(0).max(1_000_000).optional()
 });
 
 function toBase64Url(s: string): string {
@@ -74,7 +83,10 @@ export function decodeJournalCursor(raw: string | null): JournalCursor | null {
 /** Every param falls back to its default rather than failing, for the same reason. */
 export function parseJournalQuery(params: URLSearchParams): JournalQuery {
 	const tab: JournalTab = params.get('tab') === 'bookmarks' ? 'bookmarks' : 'reviews';
-	const sort: JournalSort = params.get('sort') === 'top' ? 'top' : 'newest';
+	const rawSort = params.get('sort');
+	const sort: JournalSort = JOURNAL_SORTS.some((o) => o.value === rawSort)
+		? (rawSort as JournalSort)
+		: 'newest';
 	const rawFilter = params.get('filter');
 	const filter: JournalFilter = JOURNAL_FILTERS.some((f) => f.value === rawFilter)
 		? (rawFilter as JournalFilter)

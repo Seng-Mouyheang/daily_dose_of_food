@@ -20,6 +20,7 @@
 	 *  short lines. */
 	let {
 		review,
+		href = `/review/${review.id}`,
 		showAuthor,
 		selected = false,
 		onselect,
@@ -29,6 +30,8 @@
 		onmore
 	}: {
 		review: FeedReview;
+		/** Where the row leads; the journal adds a `from` so the review page can link back. */
+		href?: string;
 		/** Bookmarks show the author on the third line instead of the visit date. */
 		showAuthor: boolean;
 		/** The desktop preview pane is showing this row. */
@@ -98,7 +101,7 @@
 		style:transform={open ? `translateX(-${ACTION_WIDTH}px)` : undefined}
 	>
 		<a
-			href={`/review/${review.id}`}
+			{href}
 			{onclick}
 			aria-current={selected ? 'true' : undefined}
 			class="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 lg:px-5 {onmore ? 'pr-1' : 'pr-2.5'}"

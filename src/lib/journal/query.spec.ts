@@ -57,7 +57,7 @@ describe('parseJournalQuery', () => {
 describe('journal cursor', () => {
 	it('round-trips both shapes', () => {
 		const newest = { t: '2026-10-08T09:00:00.000Z', id: ID };
-		const top = { ...newest, r: 4.5 };
+		const top = { ...newest, v: 4.5 };
 		expect(decodeJournalCursor(encodeJournalCursor(newest))).toEqual(newest);
 		expect(decodeJournalCursor(encodeJournalCursor(top))).toEqual(top);
 	});

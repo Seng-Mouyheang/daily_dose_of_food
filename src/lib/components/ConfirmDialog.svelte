@@ -1,8 +1,11 @@
 <script lang="ts">
-	/** A yes/no question before something that can't be taken back in one tap — "Delete this
-	 *  review?". Native <dialog> + showModal() for the same reasons as ActionSheet; role
-	 *  alertdialog because it interrupts to ask. Cancel is focused first, so Enter never
-	 *  confirms by accident. */
+	/** A yes/no question before something that can't be taken back in one tap — "Delete review".
+	 *  Same look as the comment delete dialog in CommentItem: short title, one-line question,
+	 *  text Cancel and a red pill confirm on the right.
+	 *
+	 *  A native modal dialog opened with showModal(): the browser provides the top layer, the
+	 *  focus trap, Esc to close and an inert page behind it. role alertdialog because it
+	 *  interrupts to ask. Cancel is focused first, so Enter never confirms by accident. */
 	let {
 		open,
 		title,
@@ -35,17 +38,17 @@
 	role="alertdialog"
 	aria-labelledby="confirm-title"
 	aria-describedby="confirm-message"
-	class="confirm m-auto w-[min(360px,calc(100%-40px))] rounded-[18px] bg-surface p-[22px] text-ink shadow-card-lg"
+	class="m-auto w-[min(22rem,calc(100%-2rem))] rounded-card border border-line bg-surface p-5 text-ink shadow-card-lg backdrop:bg-scrim"
 >
-	<h2 id="confirm-title" class="font-display text-xl font-semibold">{title}</h2>
-	<p id="confirm-message" class="mt-2 text-[14.5px] leading-normal text-ink-2">{message}</p>
-	<div class="mt-[18px] flex gap-2.5">
+	<h2 id="confirm-title" class="font-display text-lg font-semibold">{title}</h2>
+	<p id="confirm-message" class="mt-1 text-sm text-ink-2">{message}</p>
+	<div class="mt-5 flex justify-end gap-2 text-sm font-semibold">
 		<!-- svelte-ignore a11y_autofocus -->
 		<button
 			type="button"
 			autofocus
 			onclick={onclose}
-			class="h-11 flex-1 rounded-input bg-sunken text-[15px] font-bold">Cancel</button
+			class="h-10 rounded-full px-4 text-ink-2 hover:text-ink">Cancel</button
 		>
 		<button
 			type="button"
@@ -53,13 +56,7 @@
 				onconfirm();
 				onclose();
 			}}
-			class="h-11 flex-1 rounded-input bg-bad text-[15px] font-bold text-bg">{confirmLabel}</button
+			class="h-10 rounded-full bg-bad px-4 text-on-accent">{confirmLabel}</button
 		>
 	</div>
 </dialog>
-
-<style>
-	.confirm::backdrop {
-		background: var(--scrim);
-	}
-</style>

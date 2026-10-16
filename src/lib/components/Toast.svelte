@@ -13,14 +13,15 @@
 	{#if toast.current}
 		{#key toast.current.id}
 			<div
-				class="toast-in pointer-events-auto flex w-full items-center justify-between gap-3 rounded-input bg-ink px-3.5 py-3 text-sm font-semibold text-bg shadow-card-lg"
+				class="toast-in pointer-events-auto flex w-full items-center justify-between gap-3 rounded-input border border-line bg-surface px-3.5 py-3 text-sm font-semibold text-ink shadow-card-lg"
 			>
 				<span>{toast.current.text}</span>
 				{#if toast.current.undo}
 					<button
 						type="button"
 						onclick={() => toast.runUndo()}
-						class="min-h-8 rounded-md px-1.5 font-bold text-accent">Undo</button
+						class="min-h-8 rounded-md px-1.5 font-bold text-accent-strong hover:bg-accent-soft"
+						>Undo</button
 					>
 				{/if}
 			</div>

@@ -128,6 +128,16 @@
 	}
 
 	const review = $derived(data.review);
+
+	/** Opened from the journal (`?from=/journal…`), the back link returns to that exact view;
+	 *  anything else, including a hand-edited `from`, falls back to the feed. Only a same-site
+	 *  /journal path is accepted, so the param can't send anyone off-site. */
+	const back = $derived.by(() => {
+		const from = page.url.searchParams.get('from');
+		return from && /^\/journal(\?|$)/.test(from)
+			? { href: from, label: 'Back to my journal' }
+			: { href: '/', label: 'Back to feed' };
+	});
 	const title = $derived(reviewTitle(review));
 
 	/* ------------------------- author actions: delete (and edit) ------------------------- */
@@ -214,11 +224,11 @@
 	<div class="sticky top-0 z-20 -mx-4 bg-bg px-4 pt-3 lg:-mx-8 lg:px-8">
 		<div class="flex items-center justify-between">
 			<a
-				href="/"
+				href={back.href}
 				class="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-accent-strong"
 			>
 				<Icon name="chevL" size={16} weight={2.2} />
-				Back to feed
+				{back.label}
 			</a>
 			{#if data.isOwnReview}
 				<button
@@ -255,23 +265,21 @@
 					</p>
 				</div>
 				{#if data.isOwnReview}
-					<div class="flex items-center gap-1.5">
-						<Button
-							variant="ghost"
+					<div class="flex items-center gap-2">
+						<a
 							href={`/review/${review.id}/edit`}
-							class="h-9 gap-1.5 bg-sunken px-3 text-sm text-ink"
+							class="inline-flex h-10 items-center gap-2 rounded-input border border-line px-3.5 text-[15px] font-semibold text-ink transition-colors hover:border-ink-3"
 						>
-							<Icon name="pencil" size={15} />
+							<Icon name="pencil" size={16} />
 							Edit
-						</Button>
+						</a>
 						<button
 							type="button"
 							onclick={() => (confirmingDelete = true)}
-							aria-label="Delete review"
-							title="Delete review"
-							class="grid h-9 w-9 place-items-center rounded-input bg-bad-soft text-bad hover:brightness-95"
+							class="inline-flex h-10 items-center gap-2 rounded-input border border-line px-3.5 text-[15px] font-semibold text-bad transition-colors hover:border-bad"
 						>
-							<Icon name="trash" size={18} />
+							<Icon name="trash" size={16} />
+							Delete
 						</button>
 					</div>
 				{:else}
@@ -584,8 +592,8 @@
 	<ActionSheet open={sheetOpen} {title} actions={ownActions} onclose={() => (sheetOpen = false)} />
 	<ConfirmDialog
 		open={confirmingDelete}
-		title="Delete this review?"
-		message={`“${title}” will be removed from your journal and the feed, with its photos and ${review.commentCount} ${review.commentCount === 1 ? 'comment' : 'comments'}.`}
+		title="Delete review"
+		message="Delete your review permanently?"
 		confirmLabel="Delete"
 		onconfirm={deleteReview}
 		onclose={() => (confirmingDelete = false)}

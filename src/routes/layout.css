@@ -171,6 +171,14 @@ body {
 	display: none;
 }
 
+/* A slim, themed scrollbar for a scrolling pane (the journal's list and preview): a thin thumb
+ * in the line color with no track. Standard properties (Chromium 121+, Firefox); Safari keeps
+ * its default overlay scrollbar. */
+.thin-scroll {
+	scrollbar-width: thin;
+	scrollbar-color: var(--line) transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

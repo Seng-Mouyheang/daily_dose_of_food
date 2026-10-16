@@ -11,10 +11,12 @@
 import type { SQL } from 'drizzle-orm';
 import {
 	and,
+	asc,
 	count,
 	desc,
 	eq,
 	exists,
+	gt,
 	ilike,
 	isNotNull,
 	isNull,
@@ -103,46 +105,72 @@ function filterCondition(filter: JournalQuery['filter']): SQL | undefined {
 	}
 }
 
+type DateCol = typeof reviews.visitedAt | typeof reviewSaves.createdAt;
+
+/** Pre-tax total across a review's items, 0 when none has a price — what the row shows. */
+const priceExpr = sql<string>`(select coalesce(sum(${reviewItems.price}), 0) from ${reviewItems} where ${reviewItems.reviewId} = ${reviews.id})`;
+
 /**
- * Keyset "after the cursor" for the two sort orders. `dateCol` is the visit date on My reviews
- * and the save date on Bookmarks.
- *
- * newest: (date DESC, id DESC)
- * top:    (rating DESC, date DESC, id DESC)
+ * Each sort as (optional value column, its direction, then date + id direction). The date is
+ * the visit date on My reviews and the save date on Bookmarks; ties on rating or price fall
+ * back to newest first.
  */
-function afterCursor(
-	query: JournalQuery,
-	dateCol: typeof reviews.visitedAt | typeof reviewSaves.createdAt
-): SQL | undefined {
-	const c = query.cursor;
-	if (!c) return undefined;
-	const t = new Date(c.t);
-	const byDate = or(lt(dateCol, t), and(eq(dateCol, t), lt(reviews.id, c.id)));
-	if (query.sort === 'newest' || c.r === undefined) return byDate;
-	const r = c.r.toFixed(1);
-	return or(lt(reviews.overallRating, r), and(eq(reviews.overallRating, r), byDate));
+function sortSpec(sort: JournalQuery['sort']): {
+	value: SQL | null;
+	valueDir: 'asc' | 'desc';
+	dateDir: 'asc' | 'desc';
+} {
+	switch (sort) {
+		case 'oldest':
+			return { value: null, valueDir: 'asc', dateDir: 'asc' };
+		case 'top':
+			return { value: sql`${reviews.overallRating}`, valueDir: 'desc', dateDir: 'desc' };
+		case 'lowest':
+			return { value: sql`${reviews.overallRating}`, valueDir: 'asc', dateDir: 'desc' };
+		case 'price_desc':
+			return { value: priceExpr, valueDir: 'desc', dateDir: 'desc' };
+		case 'price_asc':
+			return { value: priceExpr, valueDir: 'asc', dateDir: 'desc' };
+		default:
+			return { value: null, valueDir: 'desc', dateDir: 'desc' };
+	}
 }
 
-function orderFor(
-	query: JournalQuery,
-	dateCol: typeof reviews.visitedAt | typeof reviewSaves.createdAt
-) {
-	return query.sort === 'top'
-		? [desc(reviews.overallRating), desc(dateCol), desc(reviews.id)]
-		: [desc(dateCol), desc(reviews.id)];
+/** Keyset "after the cursor" for whichever sort is active. */
+function afterCursor(query: JournalQuery, dateCol: DateCol): SQL | undefined {
+	const c = query.cursor;
+	if (!c) return undefined;
+	const spec = sortSpec(query.sort);
+	const past = (dir: 'asc' | 'desc') => (dir === 'desc' ? lt : gt);
+	const t = new Date(c.t);
+	const byDate = or(
+		past(spec.dateDir)(dateCol, t),
+		and(eq(dateCol, t), past(spec.dateDir)(reviews.id, c.id))
+	);
+	if (!spec.value || c.v === undefined) return byDate;
+	// Ratings and prices both have at most 2 decimals, so a fixed 2dp string matches the
+	// numeric value exactly and ties at a page boundary are neither skipped nor repeated.
+	const v = c.v.toFixed(2);
+	return or(past(spec.valueDir)(spec.value, v), and(eq(spec.value, v), byDate));
+}
+
+function orderFor(query: JournalQuery, dateCol: DateCol) {
+	const spec = sortSpec(query.sort);
+	const by = (dir: 'asc' | 'desc') => (dir === 'desc' ? desc : asc);
+	const tail = [by(spec.dateDir)(dateCol), by(spec.dateDir)(reviews.id)];
+	return spec.value ? [by(spec.valueDir)(spec.value), ...tail] : tail;
 }
 
 /** Built from the last row of a full page; null when there is no next page. */
 function nextCursorFrom(
-	rows: { id: string; overallRating: string; sortDate: Date }[],
-	query: JournalQuery
+	rows: { id: string; sortDate: Date; sortValue: unknown }[]
 ): JournalCursor | null {
 	if (rows.length <= PAGE_SIZE) return null;
 	const last = rows[PAGE_SIZE - 1]!;
 	return {
 		t: last.sortDate.toISOString(),
 		id: last.id,
-		...(query.sort === 'top' ? { r: Number(last.overallRating) } : {})
+		...(last.sortValue == null ? {} : { v: Number(last.sortValue) })
 	};
 }
 
@@ -160,14 +188,15 @@ function mineBase(userId: string, archived: boolean) {
  * A bookmark is listed only while the viewer could still open the review: public, published,
  * live, not archived by its author, and by an author who still exists. A review that turned
  * private after being saved just drops out of the list (the save row stays, so it comes back
- * if the author makes it public again). Your own reviews are never "bookmarks".
+ * if the author makes it public again).
  */
 function bookmarkBase(userId: string) {
 	return and(
 		eq(reviewSaves.userId, userId),
-		ne(reviews.userId, userId),
-		eq(reviews.visibility, 'public'),
+		// Anyone's public review, or one of your own at any visibility — bookmarking your own
+		// review from the feed should land here too.
 		eq(reviews.reviewStatus, 'published'),
+		or(eq(reviews.visibility, 'public'), eq(reviews.userId, userId)),
 		isNull(reviews.deletedAt),
 		isNull(reviews.archivedAt),
 		isNull(users.deletedAt)
@@ -176,7 +205,11 @@ function bookmarkBase(userId: string) {
 
 export async function getMyReviews(userId: string, query: JournalQuery): Promise<JournalPage> {
 	const rows = await db
-		.select({ ...spineColumns, sortDate: reviews.visitedAt })
+		.select({
+			...spineColumns,
+			sortDate: reviews.visitedAt,
+			sortValue: sortSpec(query.sort).value ?? sql<null>`null`
+		})
 		.from(reviews)
 		.innerJoin(users, eq(reviews.userId, users.id))
 		.innerJoin(places, eq(reviews.placeId, places.id))
@@ -196,7 +229,11 @@ export async function getMyReviews(userId: string, query: JournalQuery): Promise
 
 export async function getBookmarks(userId: string, query: JournalQuery): Promise<JournalPage> {
 	const rows = await db
-		.select({ ...spineColumns, sortDate: reviewSaves.createdAt })
+		.select({
+			...spineColumns,
+			sortDate: reviewSaves.createdAt,
+			sortValue: sortSpec(query.sort).value ?? sql<null>`null`
+		})
 		.from(reviewSaves)
 		.innerJoin(reviews, eq(reviewSaves.reviewId, reviews.id))
 		.innerJoin(users, eq(reviews.userId, users.id))
@@ -216,7 +253,7 @@ export async function getBookmarks(userId: string, query: JournalQuery): Promise
 }
 
 async function finish(
-	rows: (Parameters<typeof assembleReview>[0] & { sortDate: Date })[],
+	rows: (Parameters<typeof assembleReview>[0] & { sortDate: Date; sortValue: unknown })[],
 	query: JournalQuery,
 	userId: string
 ): Promise<JournalPage> {
@@ -227,7 +264,7 @@ async function finish(
 	);
 	return {
 		items: page.map((row) => assembleReview(row, children)),
-		nextCursor: nextCursorFrom(rows, query)
+		nextCursor: nextCursorFrom(rows)
 	};
 }
 
