@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "monthly_budget" numeric(12, 2);--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "chk_user_monthly_budget" CHECK ("users"."monthly_budget" IS NULL OR "users"."monthly_budget" >= 0);

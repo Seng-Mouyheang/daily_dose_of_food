@@ -57,6 +57,13 @@
       "when": 1792050921916,
       "tag": "0007_review_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792145917023,
+      "tag": "0008_user_monthly_budget",
+      "breakpoints": true
     }
   ]
 }

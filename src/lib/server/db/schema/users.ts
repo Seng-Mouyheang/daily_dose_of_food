@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+	check,
+	numeric,
+	pgTable,
+	text,
+	timestamp,
+	uniqueIndex,
+	uuid,
+	varchar
+} from 'drizzle-orm/pg-core';
 import { citext } from './types.ts';
 
 export const users = pgTable(
@@ -15,6 +24,9 @@ export const users = pgTable(
 		avatarUrl: text('avatar_url'),
 		// FK to media_files is added in relations only, to avoid a circular table dependency
 		avatarMediaId: uuid('avatar_media_id'),
+		/** Monthly eating-out budget for the dashboard; week and year budgets derive from it.
+		 *  Null until the user sets one. */
+		monthlyBudget: numeric('monthly_budget', { precision: 12, scale: 2 }),
 		accountStatus: varchar('account_status', { length: 20 }).notNull().default('active'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true })
@@ -30,6 +42,7 @@ export const users = pgTable(
 		uniqueIndex('uq_users_email_active')
 			.on(t.email)
 			.where(sql`${t.deletedAt} IS NULL`),
+		check('chk_user_monthly_budget', sql`${t.monthlyBudget} IS NULL OR ${t.monthlyBudget} >= 0`),
 		check(
 			'chk_user_account_status',
 			sql`${t.accountStatus} IN ('pending', 'active', 'suspended', 'deactivated', 'deleted')`

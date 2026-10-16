@@ -1,6 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import favicon from '#lib/assets/favicon.svg';
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from 'svelte-clerk';
 	import Icon from '#lib/components/Icon.svelte';
@@ -9,6 +10,13 @@
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
+
+	// The server runs in UTC; the dashboard's week/month/year bounds need the user's own zone.
+	onMount(() => {
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		if (!document.cookie.includes(`tz=${encodeURIComponent(tz)}`))
+			document.cookie = `tz=${encodeURIComponent(tz)}; path=/; max-age=31536000; samesite=lax`;
+	});
 
 	// Explore doesn't have a page yet, so it stays an inert label rather than a dead link.
 	const navLabels = ['Explore'];
