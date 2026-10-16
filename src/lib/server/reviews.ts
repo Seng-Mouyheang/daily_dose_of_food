@@ -719,6 +719,13 @@ export async function updateReview(
 			categories,
 			mediaIdByPublicId: await findExistingMediaIds(photos.map((p) => p.publicId))
 		});
+		// stableId(reviewId, 'place') is the place this review created when first published, so
+		// reusing it here would hit onConflictDoNothing and keep the old place. An edit that
+		// introduces a new place gets a fresh id instead.
+		if (rows.newPlace) {
+			rows.newPlace.id = crypto.randomUUID();
+			rows.review.placeId = rows.newPlace.id;
+		}
 
 		const r = rows.review;
 		const statements: BatchItem<'pg'>[] = [];

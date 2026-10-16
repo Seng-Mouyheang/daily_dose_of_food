@@ -57,10 +57,13 @@ export function swipeReveal(node: HTMLElement, initial: SwipeOptions) {
 		const wasOpen = start.open;
 		start = null;
 		node.style.transition = '';
-		node.style.transform = '';
+		// A tap leaves the row where it is. After a drag, snap to the resulting state here: the
+		// caller only rewrites the transform when `open` changes, so clearing it would leave a
+		// row that stays open drawn closed.
 		if (!moved) return;
-		const end = (wasOpen ? -opts.width : 0) + dx;
-		opts.onchange(end < -opts.width / 2);
+		const open = (wasOpen ? -opts.width : 0) + dx < -opts.width / 2;
+		node.style.transform = open ? `translateX(-${opts.width}px)` : '';
+		opts.onchange(open);
 	}
 
 	function click(e: MouseEvent) {

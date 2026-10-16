@@ -136,16 +136,23 @@ function sortSpec(sort: JournalQuery['sort']): {
 	}
 }
 
+/** The date at millisecond precision. Postgres keeps microseconds (a save's defaultNow()) but the
+ *  cursor is a JS Date, so comparing raw values would make the boundary row look newer than
+ *  itself and repeat it on the next page. Sorting uses the same value so the two agree. */
+const msDate = (col: DateCol) => sql<Date>`date_trunc('milliseconds', ${col})`;
+
 /** Keyset "after the cursor" for whichever sort is active. */
 function afterCursor(query: JournalQuery, dateCol: DateCol): SQL | undefined {
 	const c = query.cursor;
 	if (!c) return undefined;
 	const spec = sortSpec(query.sort);
 	const past = (dir: 'asc' | 'desc') => (dir === 'desc' ? lt : gt);
-	const t = new Date(c.t);
+	// An ISO string, not a Date: compared against an SQL expression there is no column to map it.
+	const t = new Date(c.t).toISOString();
+	const date = msDate(dateCol);
 	const byDate = or(
-		past(spec.dateDir)(dateCol, t),
-		and(eq(dateCol, t), past(spec.dateDir)(reviews.id, c.id))
+		past(spec.dateDir)(date, t),
+		and(eq(date, t), past(spec.dateDir)(reviews.id, c.id))
 	);
 	if (!spec.value || c.v === undefined) return byDate;
 	// Ratings and prices both have at most 2 decimals, so a fixed 2dp string matches the
@@ -157,7 +164,7 @@ function afterCursor(query: JournalQuery, dateCol: DateCol): SQL | undefined {
 function orderFor(query: JournalQuery, dateCol: DateCol) {
 	const spec = sortSpec(query.sort);
 	const by = (dir: 'asc' | 'desc') => (dir === 'desc' ? desc : asc);
-	const tail = [by(spec.dateDir)(dateCol), by(spec.dateDir)(reviews.id)];
+	const tail = [by(spec.dateDir)(msDate(dateCol)), by(spec.dateDir)(reviews.id)];
 	return spec.value ? [by(spec.valueDir)(spec.value), ...tail] : tail;
 }
 
