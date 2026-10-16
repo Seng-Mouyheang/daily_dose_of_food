@@ -72,6 +72,9 @@
 		"untabbable",
 		"onreply",
 		"btrim",
-		"ddof"
+		"ddof",
+		"onmore",
+		"onopenchange",
+		"unarchiving"
 	]
 }

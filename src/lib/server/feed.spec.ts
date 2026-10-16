@@ -67,6 +67,7 @@ describe('canViewReview', () => {
 		visibility: 'public',
 		reviewStatus: 'published',
 		deletedAt: null,
+		archivedAt: null,
 		userId: 'author'
 	};
 
@@ -80,7 +81,8 @@ describe('canViewReview', () => {
 		['friends (until follows exist)', { visibility: 'friends' }],
 		['draft', { reviewStatus: 'draft' }],
 		['hidden by moderation', { reviewStatus: 'hidden' }],
-		['soft-deleted', { deletedAt: new Date() }]
+		['soft-deleted', { deletedAt: new Date() }],
+		['archived', { archivedAt: new Date() }]
 	])('hides a %s review from everyone but its author', (_label, override) => {
 		const row = { ...published, ...override };
 		expect(canViewReview(row, null)).toBe(false);

@@ -10,11 +10,16 @@
 	let {
 		options,
 		current,
-		ariaLabel
+		ariaLabel,
+		onselect
 	}: {
-		options: { value: string; label: string; href: string }[];
+		/** `count` adds a badge after the label (the journal's "My reviews 12"). */
+		options: { value: string; label: string; href: string; count?: number }[];
 		current: string;
 		ariaLabel: string;
+		/** Takes over a plain click (the journal switches tabs from data it already has).
+		 *  Modified clicks still open the link normally. */
+		onselect?: (value: string, href: string) => void;
 	} = $props();
 </script>
 
@@ -24,11 +29,23 @@
 		<a
 			href={option.href}
 			aria-current={isCurrent ? 'page' : undefined}
+			onclick={(e) => {
+				if (!onselect || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+				e.preventDefault();
+				onselect(option.value, option.href);
+			}}
 			class={`-mb-px flex min-h-11 flex-1 items-center justify-center border-b-[2.5px] px-2 text-[15px] font-semibold transition-colors lg:flex-none lg:justify-start lg:pr-6 ${
 				isCurrent ? 'border-accent text-ink' : 'border-transparent text-ink-3 hover:text-ink'
 			}`}
 		>
 			{option.label}
+			{#if option.count !== undefined}
+				<span
+					class={`ml-1.5 rounded-full px-[7px] py-px text-xs font-bold tabular-nums ${
+						isCurrent ? 'bg-accent-soft text-accent-strong' : 'bg-sunken text-ink-2'
+					}`}>{option.count}</span
+				>
+			{/if}
 		</a>
 	{/each}
 </nav>

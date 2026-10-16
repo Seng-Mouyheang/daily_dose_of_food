@@ -1,5 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { onMount } from 'svelte';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import ActionSheet, { type SheetAction } from '#lib/components/ActionSheet.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { toast } from '#lib/components/toast.svelte.ts';
+	import { JOURNAL_ACTIONS, runJournalAction, undoJournalAction } from '#lib/journal/actions.ts';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import Icon from '#lib/components/Icon.svelte';
@@ -121,7 +128,59 @@
 	}
 
 	const review = $derived(data.review);
+
+	/** Opened from the journal (`?from=/journal…`), the back link returns to that exact view;
+	 *  anything else, including a hand-edited `from`, falls back to the feed. Only a same-site
+	 *  /journal path is accepted, so the param can't send anyone off-site. */
+	const back = $derived.by(() => {
+		const from = page.url.searchParams.get('from');
+		return from && /^\/journal(\?|$)/.test(from)
+			? { href: from, label: 'Back to my journal' }
+			: { href: '/', label: 'Back to feed' };
+	});
 	const title = $derived(reviewTitle(review));
+
+	/* ------------------------- author actions: delete (and edit) ------------------------- */
+
+	let sheetOpen = $state(false);
+	let confirmingDelete = $state(false);
+
+	const ownActions = $derived<SheetAction[]>([
+		{ label: 'Edit review', icon: 'pencil', href: `/review/${review.id}/edit` },
+		{
+			label: 'Delete review',
+			icon: 'trash',
+			danger: true,
+			onclick: () => (confirmingDelete = true)
+		}
+	]);
+
+	// Back from a saved edit: say so once, then drop the flag so a reload doesn't repeat it.
+	onMount(() => {
+		if (page.url.searchParams.has('saved')) {
+			toast.show('Changes saved');
+			const url = new URL(page.url.href);
+			url.searchParams.delete('saved');
+			replaceState(url, page.state);
+		}
+	});
+
+	/** Deleting leaves the page — the review is gone — for the journal, where the Undo message
+	 *  is still on screen (it lives in the root layout). Undo brings the review back and returns
+	 *  here. */
+	async function deleteReview() {
+		const id = review.id;
+		const spec = JOURNAL_ACTIONS.delete;
+		if (!(await runJournalAction('delete', id))) {
+			toast.show(spec.failed);
+			return;
+		}
+		await goto('/journal');
+		toast.show(spec.done, async () => {
+			if (await undoJournalAction('delete', id)) await goto(`/review/${id}`);
+			else toast.show("Couldn't undo that. Try again.");
+		});
+	}
 	const item = $derived(primaryItem(review.items));
 	const total = $derived(totalWithTax(review.items));
 	const published = $derived(timeAgo(review.publishedAt ?? review.visitedAt));
@@ -163,13 +222,25 @@
 	<!-- Pinned so "back" is always one tap away on a long review. The solid background (bled out
 	     to the container edges) keeps scrolled content from showing through behind it. -->
 	<div class="sticky top-0 z-20 -mx-4 bg-bg px-4 pt-3 lg:-mx-8 lg:px-8">
-		<a
-			href="/"
-			class="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-accent-strong"
-		>
-			<Icon name="chevL" size={16} weight={2.2} />
-			Back to feed
-		</a>
+		<div class="flex items-center justify-between">
+			<a
+				href={back.href}
+				class="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-accent-strong"
+			>
+				<Icon name="chevL" size={16} weight={2.2} />
+				{back.label}
+			</a>
+			{#if data.isOwnReview}
+				<button
+					type="button"
+					onclick={() => (sheetOpen = true)}
+					aria-label="More options"
+					class="grid h-11 w-11 place-items-center rounded-input text-ink-2 hover:bg-sunken lg:hidden"
+				>
+					<Icon name="more" size={20} />
+				</button>
+			{/if}
+		</div>
 	</div>
 
 	<!-- One column on mobile, in the handoff's order. On desktop the gallery and location move
@@ -194,12 +265,23 @@
 					</p>
 				</div>
 				{#if data.isOwnReview}
-					<!-- Editing a published review isn't built yet — the wizard only creates. Shown
-					     disabled rather than hidden so the author can see it is coming. -->
-					<Button variant="ghost" disabled class="h-9 gap-1.5 px-3 text-sm">
-						<Icon name="pencil" size={15} />
-						Edit
-					</Button>
+					<div class="flex items-center gap-2">
+						<a
+							href={`/review/${review.id}/edit`}
+							class="inline-flex h-10 items-center gap-2 rounded-input border border-line px-3.5 text-[15px] font-semibold text-ink transition-colors hover:border-ink-3"
+						>
+							<Icon name="pencil" size={16} />
+							Edit
+						</a>
+						<button
+							type="button"
+							onclick={() => (confirmingDelete = true)}
+							class="inline-flex h-10 items-center gap-2 rounded-input border border-line px-3.5 text-[15px] font-semibold text-bad transition-colors hover:border-bad"
+						>
+							<Icon name="trash" size={16} />
+							Delete
+						</button>
+					</div>
 				{:else}
 					<Button variant="ghost" disabled class="h-9 px-3 text-sm">Follow</Button>
 				{/if}
@@ -505,3 +587,15 @@
 		</div>
 	</div>
 </div>
+
+{#if data.isOwnReview}
+	<ActionSheet open={sheetOpen} {title} actions={ownActions} onclose={() => (sheetOpen = false)} />
+	<ConfirmDialog
+		open={confirmingDelete}
+		title="Delete review"
+		message="Delete your review permanently?"
+		confirmLabel="Delete"
+		onconfirm={deleteReview}
+		onclose={() => (confirmingDelete = false)}
+	/>
+{/if}

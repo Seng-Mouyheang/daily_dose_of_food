@@ -5,6 +5,7 @@ import {
 	type ReviewDraftSnapshot
 } from './payload.ts';
 import type { ItemDraft } from './draft.svelte.ts';
+import { publishReviewSchema, updateReviewSchema } from './schema.ts';
 
 function emptyItem(itemType: 'food' | 'drink'): ItemDraft {
 	return {
@@ -215,5 +216,39 @@ describe('buildPublishPayload', () => {
 			})
 		);
 		expect(payload.photos.map((p) => p.isCover)).toEqual([false, true]);
+	});
+
+	it('sends a photo the review already had back by public id only', () => {
+		const photo = {
+			publicId: 'old',
+			version: 1,
+			signature: '',
+			format: 'jpg',
+			width: 800,
+			height: 600,
+			bytes: 1000,
+			caption: 'Window seat',
+			isCover: true,
+			previewUrl: 'https://example.test/old.jpg'
+		};
+		const payload = buildPublishPayload(
+			snapshot({
+				// The shared fixture's place id isn't a uuid; the schema checks below need one.
+				place: {
+					id: '9b2f6c1e-3d4a-4b5c-8d6e-7f8091a2b3c4',
+					name: 'Malis',
+					addressLine1: null,
+					city: null,
+					distanceMeters: null
+				},
+				photos: [{ ...photo, existing: true }]
+			})
+		);
+		expect(payload.photos).toEqual([
+			{ existing: true, publicId: 'old', caption: 'Window seat', isCover: true }
+		]);
+		expect(updateReviewSchema.safeParse(payload).success).toBe(true);
+		// …and a fresh publish never accepts one.
+		expect(publishReviewSchema.safeParse(payload).success).toBe(false);
 	});
 });

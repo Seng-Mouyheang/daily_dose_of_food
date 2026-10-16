@@ -101,70 +101,99 @@ export const reviewPhotoSchema = z.object({
 	isCover: z.boolean().default(false)
 });
 
-export const publishReviewSchema = z
+const reviewFields = {
+	/** Minted client-side at step 1, carried through the whole wizard. Doubles as an
+	 *  idempotency key: every insert uses it (or a derived id) with onConflictDoNothing,
+	 *  so resubmitting the same payload is a no-op rather than a duplicate review. */
+	reviewId: z.uuid(),
+	reviewType: z.enum(['food', 'drink', 'combined', 'general']),
+	visitType: z.enum(['dine_in', 'takeaway', 'delivery', 'drive_through', 'other']),
+	mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).nullable().default(null),
+	visitedAt: z.iso.datetime(),
+	place: placeRefSchema,
+	title: z.string().max(200).nullable().default(null),
+	description: z.string().max(3000).nullable().default(null),
+	visibility: z.enum(['public', 'friends', 'private']).default('public'),
+	/** The overall "keep on favorites shelf" toggle — reviews.isFavorite. Distinct from an
+	 *  item's own isFavorite/isLeastFavorite, which marks the best/worst dish in a multi-item order. */
+	isFavorite: z.boolean().default(false),
+	items: z.array(reviewItemSchema).min(1).max(2),
+	/** Place-scoped ratings — Price, Service, Hygiene, Amenities. reviewItemId is null for
+	 *  these. No minimum: the prototype's own validate() never requires a rating to
+	 *  publish, only a place and an item name. */
+	placeRatings: z.array(categoryRatingSchema).max(6),
+	photos: z.array(reviewPhotoSchema).max(10)
+};
+
+/** The rules both a publish and an edit must satisfy, beyond each field's own schema. */
+function checkReview(
+	v: Pick<
+		z.infer<z.ZodObject<typeof reviewFields>>,
+		'reviewType' | 'mealType' | 'items' | 'placeRatings'
+	> & { photos: { isCover: boolean }[] },
+	ctx: z.RefinementCtx
+) {
+	if (v.reviewType === 'drink' && v.mealType !== null) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['mealType'],
+			message: 'drink-only reviews have no meal type'
+		});
+	}
+	if (v.reviewType === 'combined' && v.items.length !== 2) {
+		ctx.addIssue({
+			code: 'custom',
+			path: ['items'],
+			message: 'a combined review needs exactly one food and one drink item'
+		});
+	}
+	if (v.reviewType === 'food' && v.items.some((i) => i.itemType !== 'food')) {
+		ctx.addIssue({ code: 'custom', path: ['items'], message: 'expected only food items' });
+	}
+	if (v.reviewType === 'drink' && v.items.some((i) => i.itemType !== 'drink')) {
+		ctx.addIssue({ code: 'custom', path: ['items'], message: 'expected only drink items' });
+	}
+	const coverCount = v.photos.filter((p) => p.isCover).length;
+	if (coverCount > 1) {
+		ctx.addIssue({ code: 'custom', path: ['photos'], message: 'uq_review_cover_image' });
+	}
+	const seenCategories = new Set<number>();
+	for (const r of v.placeRatings) {
+		if (seenCategories.has(r.ratingCategoryId)) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['placeRatings'],
+				message: 'uq_review_place_category_rating'
+			});
+			break;
+		}
+		seenCategories.add(r.ratingCategoryId);
+	}
+}
+
+export const publishReviewSchema = z.object(reviewFields).superRefine(checkReview);
+
+/** A photo that is already on the review being edited, sent back by its Cloudinary public id
+ *  alone. It has no fresh upload signature to check; the server instead checks it really is
+ *  one of this review's current photos (see updateReview). */
+export const existingPhotoSchema = z.object({
+	existing: z.literal(true),
+	publicId: z.string().min(1).max(255),
+	caption: z.string().max(500).nullable().default(null),
+	isCover: z.boolean().default(false)
+});
+
+/** An edit: the same review, except a photo may be one it already had. */
+export const updateReviewSchema = z
 	.object({
-		/** Minted client-side at step 1, carried through the whole wizard. Doubles as an
-		 *  idempotency key: every insert uses it (or a derived id) with onConflictDoNothing,
-		 *  so resubmitting the same payload is a no-op rather than a duplicate review. */
-		reviewId: z.uuid(),
-		reviewType: z.enum(['food', 'drink', 'combined', 'general']),
-		visitType: z.enum(['dine_in', 'takeaway', 'delivery', 'drive_through', 'other']),
-		mealType: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).nullable().default(null),
-		visitedAt: z.iso.datetime(),
-		place: placeRefSchema,
-		title: z.string().max(200).nullable().default(null),
-		description: z.string().max(3000).nullable().default(null),
-		visibility: z.enum(['public', 'friends', 'private']).default('public'),
-		/** The overall "keep on favorites shelf" toggle — reviews.isFavorite. Distinct from an
-		 *  item's own isFavorite/isLeastFavorite, which marks the best/worst dish in a multi-item order. */
-		isFavorite: z.boolean().default(false),
-		items: z.array(reviewItemSchema).min(1).max(2),
-		/** Place-scoped ratings — Price, Service, Hygiene, Amenities. reviewItemId is null for
-		 *  these. No minimum: the prototype's own validate() never requires a rating to
-		 *  publish, only a place and an item name. */
-		placeRatings: z.array(categoryRatingSchema).max(6),
-		photos: z.array(reviewPhotoSchema).max(10)
+		...reviewFields,
+		photos: z.array(z.union([existingPhotoSchema, reviewPhotoSchema])).max(10)
 	})
-	.superRefine((v, ctx) => {
-		if (v.reviewType === 'drink' && v.mealType !== null) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['mealType'],
-				message: 'drink-only reviews have no meal type'
-			});
-		}
-		if (v.reviewType === 'combined' && v.items.length !== 2) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['items'],
-				message: 'a combined review needs exactly one food and one drink item'
-			});
-		}
-		if (v.reviewType === 'food' && v.items.some((i) => i.itemType !== 'food')) {
-			ctx.addIssue({ code: 'custom', path: ['items'], message: 'expected only food items' });
-		}
-		if (v.reviewType === 'drink' && v.items.some((i) => i.itemType !== 'drink')) {
-			ctx.addIssue({ code: 'custom', path: ['items'], message: 'expected only drink items' });
-		}
-		const coverCount = v.photos.filter((p) => p.isCover).length;
-		if (coverCount > 1) {
-			ctx.addIssue({ code: 'custom', path: ['photos'], message: 'uq_review_cover_image' });
-		}
-		const seenCategories = new Set<number>();
-		for (const r of v.placeRatings) {
-			if (seenCategories.has(r.ratingCategoryId)) {
-				ctx.addIssue({
-					code: 'custom',
-					path: ['placeRatings'],
-					message: 'uq_review_place_category_rating'
-				});
-				break;
-			}
-			seenCategories.add(r.ratingCategoryId);
-		}
-	});
+	.superRefine(checkReview);
 
 export type PublishReview = z.infer<typeof publishReviewSchema>;
+export type UpdateReview = z.infer<typeof updateReviewSchema>;
+export type ExistingPhotoInput = z.infer<typeof existingPhotoSchema>;
 export type ReviewItemInput = z.infer<typeof reviewItemSchema>;
 export type CategoryRatingInput = z.infer<typeof categoryRatingSchema>;
 export type PlaceRefInput = z.infer<typeof placeRefSchema>;

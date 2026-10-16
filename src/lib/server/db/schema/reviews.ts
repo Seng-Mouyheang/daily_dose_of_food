@@ -48,7 +48,10 @@ export const reviews = pgTable(
 			.notNull()
 			.defaultNow()
 			.$onUpdate(() => new Date()),
-		deletedAt: timestamp('deleted_at', { withTimezone: true })
+		deletedAt: timestamp('deleted_at', { withTimezone: true }),
+		/** Set when the author archives the review: hidden from the feed and their profile, kept
+		 *  in their journal's Archived list. Not a review_status, which belongs to moderation. */
+		archivedAt: timestamp('archived_at', { withTimezone: true })
 	},
 	(t) => [
 		index('idx_reviews_place_published')
@@ -57,6 +60,10 @@ export const reviews = pgTable(
 		index('idx_reviews_user_published')
 			.on(t.userId, sql`${t.publishedAt} DESC`)
 			.where(sql`${t.reviewStatus} = 'published' AND ${t.deletedAt} IS NULL`),
+		// The journal's "My reviews" list: newest visit first, keyset on (visited_at, id).
+		index('idx_reviews_user_visited')
+			.on(t.userId, sql`${t.visitedAt} DESC`, sql`${t.id} DESC`)
+			.where(sql`${t.deletedAt} IS NULL`),
 		index('idx_reviews_visibility').on(t.visibility, sql`${t.publishedAt} DESC`),
 		index('idx_reviews_visited_at').on(sql`${t.visitedAt} DESC`),
 		check('chk_review_rating', sql`${t.overallRating} BETWEEN 1.0 AND 5.0`),
