@@ -94,6 +94,7 @@
 	}
 	function usePreset(k: Preset) {
 		const r = presetOf(k);
+		if (!r.ok) return;
 		a = r.from;
 		b = r.to;
 		view = r.to.slice(0, 7);
@@ -132,8 +133,9 @@
 					<button
 						type="button"
 						aria-pressed={on}
+						disabled={!presetOf(k).ok}
 						onclick={() => usePreset(k)}
-						class={`h-[30px] flex-none rounded-full border px-3 text-sm font-medium whitespace-nowrap transition-colors ${
+						class={`h-[30px] flex-none rounded-full border px-3 text-sm font-medium whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-45 ${
 							on
 								? 'border-transparent bg-accent-soft text-accent-strong'
 								: 'border-line text-ink-2 hover:border-ink-3'
