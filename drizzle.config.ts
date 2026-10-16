@@ -8,6 +8,8 @@ export default defineConfig({
 	dialect: 'postgresql',
 	out: './drizzle',
 	dbCredentials: { url: process.env.DATABASE_URL },
+	// PostGIS owns spatial_ref_sys; without this, push sees it as unknown and tries to drop it.
+	extensionsFilters: ['postgis'],
 	verbose: true,
 	strict: true
 });

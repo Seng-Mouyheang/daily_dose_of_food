@@ -67,6 +67,12 @@ export const ICONS = {
 		'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/>',
 	send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
 	link: '<path d="M9 15l6-6"/><path d="M11 6.5l1-1a4 4 0 0 1 5.5 5.5l-1.5 1.5"/><path d="M13 17.5l-1 1a4 4 0 0 1-5.5-5.5l1.5-1.5"/>',
+	/** The dashboard: three bars on a baseline. */
+	chart: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/>',
+	/** Change chips: up, down, unchanged. */
+	trendUp: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+	trendDown: '<path d="M3 7l6 6 4-4 8 8"/><path d="M15 17h6v-6"/>',
+	flat: '<path d="M4 12h16"/>',
 	/** A simplified "f" wordmark, for the Facebook share link. */
 	facebook:
 		'<path d="M10 21v-9H7v-3h3V7.5A4 4 0 0 1 14 3.5h2v3h-1.5A1.5 1.5 0 0 0 13 8v1h3l-.5 3H13v9"/>',

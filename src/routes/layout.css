@@ -32,6 +32,9 @@
 	--fav: #d64f4a;
 	--fav-soft: #fbe6e5;
 	--star-empty: #e2d6c6;
+	/* The unfilled part of a meter or ranked bar. Its own token: sunken is too close to surface
+	 * in dark mode for a track to read. */
+	--track: #e6dccc;
 	/* Overlay on top of a user photo (the "1/N" counter, a thumbnail's own controls).
 	 * Deliberately identical in every theme: the backdrop is a photograph, not one of our
 	 * surfaces, so a theme-aware scrim would read as a mistake over a dark image in light
@@ -70,6 +73,7 @@
 	--fav: #e8645e;
 	--fav-soft: #3d1f1d;
 	--star-empty: #4a3e33;
+	--track: #4a3d31;
 	--scrim: rgba(20, 14, 10, 0.62);
 	--on-scrim: #ffffff;
 	--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -98,6 +102,7 @@
 		--fav: #e8645e;
 		--fav-soft: #3d1f1d;
 		--star-empty: #4a3e33;
+		--track: #4a3d31;
 		--scrim: rgba(20, 14, 10, 0.62);
 		--on-scrim: #ffffff;
 		--card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -106,6 +111,21 @@
 }
 
 @theme {
+	/* Dashboard bars grow from their baseline when they first appear (e.g. after switching
+	 * Week / Month / Year). Bars that persist ease to their new size via a transition instead. */
+	--animate-grow-y: grow-y 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+	--animate-grow-x: grow-x 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+	@keyframes grow-y {
+		from {
+			transform: scaleY(0);
+		}
+	}
+	@keyframes grow-x {
+		from {
+			transform: scaleX(0);
+		}
+	}
+
 	--font-display: 'Literata', Georgia, 'Times New Roman', serif;
 	--font-sans: 'Figtree', system-ui, sans-serif;
 
@@ -127,6 +147,7 @@
 	--color-fav: var(--fav);
 	--color-fav-soft: var(--fav-soft);
 	--color-star-empty: var(--star-empty);
+	--color-track: var(--track);
 	--color-scrim: var(--scrim);
 	--color-on-scrim: var(--on-scrim);
 	--color-badge: var(--badge);
