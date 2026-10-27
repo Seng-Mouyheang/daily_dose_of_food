@@ -5,4 +5,5 @@ export * from './lookups.ts';
 export * from './reviews.ts';
 export * from './ratings.ts';
 export * from './engagement.ts';
+export * from './logs.ts';
 export * from './relations.ts';
