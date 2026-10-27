@@ -30,7 +30,8 @@ const SCORE_SLUGS = {
 	hygiene: ['hygiene']
 } as const;
 
-const live = (userId: string) =>
+/** The viewer's published, non-deleted, non-archived reviews. */
+export const live = (userId: string) =>
 	and(
 		eq(reviews.userId, userId),
 		eq(reviews.reviewStatus, 'published'),
