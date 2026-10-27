@@ -21,6 +21,7 @@
 	// Explore doesn't have a page yet, so it stays an inert label rather than a dead link.
 	const navLabels = ['Explore'];
 	const isHome = $derived(page.url.pathname === '/');
+	const isLog = $derived(page.url.pathname.startsWith('/log'));
 	const isJournal = $derived(page.url.pathname.startsWith('/journal'));
 	const isDashboard = $derived(page.url.pathname.startsWith('/dashboard'));
 	const isWriteReview = $derived(page.url.pathname.startsWith('/review/new'));
@@ -60,6 +61,14 @@
 							>{label}</span
 						>
 					{/each}
+					<a
+						href="/log"
+						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
+							isLog ? 'border-accent text-ink' : 'border-transparent text-ink-2'
+						}`}
+					>
+						Log
+					</a>
 					<a
 						href="/journal"
 						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${

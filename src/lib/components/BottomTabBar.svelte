@@ -3,16 +3,16 @@
 	import Icon from './Icon.svelte';
 	import type { IconName } from './icons.ts';
 
-	/** The mobile app chrome: Home, Explore, a write button, Journal, Dashboard. Journal took
+	/** The mobile app chrome: Home, Log, a write button, Journal, Dashboard. Journal took
 	 *  Favorites' slot — favorites are a filter inside the journal now — and Dashboard took
 	 *  Profile's, since the avatar in the header already opens the profile.
 	 *
-	 *  Explore has no page yet, so it renders as a disabled button rather than a link to a
-	 *  404 — the same choice the desktop header makes with its inert nav label. It stays
-	 *  because the handoff's bar has five slots, and dropping one would move the write button
+	 *  Log took Explore's slot. Explore has no page yet (the desktop header keeps it as an inert
+	 *  label), and the bar needs exactly five slots: dropping one would move the write button
 	 *  off centre, which is the one thing in this bar that has to be where the thumb expects
-	 *  it. */
+	 *  it. Explore comes back here when it has a page to link to. */
 	const isHome = $derived(page.url.pathname === '/');
+	const isLog = $derived(page.url.pathname.startsWith('/log'));
 	const isJournal = $derived(page.url.pathname.startsWith('/journal'));
 	const isDashboard = $derived(page.url.pathname.startsWith('/dashboard'));
 </script>
@@ -49,7 +49,7 @@
 	class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 items-center border-t border-line bg-surface px-1.5 pt-1.5 pb-5 lg:hidden"
 >
 	{@render tab('home', 'Home', '/', isHome)}
-	{@render tab('compass', 'Explore', null, false)}
+	{@render tab('calendar', 'Log', '/log', isLog)}
 
 	<a
 		href="/review/new"
