@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { clampDay, dailyBudget, dayCounts, dayLabel, defaultMeal, streak, weekOf } from './day.ts';
+import {
+	clampDay,
+	dailyBudget,
+	dayCounts,
+	dayLabel,
+	daySummary,
+	defaultMeal,
+	logHref,
+	monthSummary,
+	parseLogQuery,
+	shiftMonth,
+	streak,
+	weekOf
+} from './day.ts';
+import type { LogEntry } from './visits.ts';
 
 const TODAY = '2026-10-16'; // a Friday
 
@@ -73,5 +87,101 @@ describe('dayLabel', () => {
 	it('uses the weekday otherwise, short on mobile', () => {
 		expect(dayLabel('2026-09-03', TODAY)).toBe('Thursday, 3 September 2026');
 		expect(dayLabel('2026-09-03', TODAY, true)).toBe('Thu, 3 September 2026');
+	});
+});
+
+describe('parseLogQuery', () => {
+	const q = (s: string) => parseLogQuery(new URLSearchParams(s), '2025-01-01', TODAY);
+	it('defaults to today and its month', () => {
+		expect(q('')).toEqual({ day: TODAY, month: '2026-10' });
+	});
+	it('reads a day and shows its month', () => {
+		expect(q('day=2026-09-03')).toEqual({ day: '2026-09-03', month: '2026-09' });
+	});
+	it('clamps a day outside the logged range', () => {
+		expect(q('day=2026-12-01').day).toBe(TODAY);
+		expect(q('day=2020-01-01').day).toBe('2025-01-01');
+	});
+	it('ignores a bad day', () => {
+		expect(q('day=nope').day).toBe(TODAY);
+		expect(q('day=2026-13-45').day).toBe(TODAY);
+	});
+	it('lets the calendar browse another month, within range', () => {
+		expect(q('day=2026-10-01&month=2026-07')).toEqual({ day: '2026-10-01', month: '2026-07' });
+		expect(q('month=2026-11').month).toBe('2026-10');
+		expect(q('month=2024-12').month).toBe('2026-10');
+		expect(q('month=2026-00').month).toBe('2026-10');
+	});
+});
+
+describe('logHref', () => {
+	it('is the bare page for today', () => expect(logHref(TODAY, TODAY)).toBe('/log'));
+	it('carries the day, and the month only when it differs', () => {
+		expect(logHref('2026-09-03', TODAY)).toBe('/log?day=2026-09-03');
+		expect(logHref('2026-09-03', TODAY, '2026-09')).toBe('/log?day=2026-09-03');
+		expect(logHref('2026-09-03', TODAY, '2026-07')).toBe('/log?day=2026-09-03&month=2026-07');
+		expect(logHref(TODAY, TODAY, '2026-07')).toBe('/log?month=2026-07');
+	});
+});
+
+const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
+	id: 'x',
+	date: '2026-10-15',
+	place: 'Brown Coffee',
+	title: 'Cappuccino',
+	itemType: 'drink',
+	qty: 1,
+	price: 2.75,
+	meal: 'lunch',
+	dining: 'dine_in',
+	overall: 4,
+	note: null,
+	reviewId: null,
+	...over
+});
+
+describe('daySummary', () => {
+	it('totals spend, visits and the mean rating over logs', () => {
+		const s = daySummary([
+			entry(),
+			entry({ title: 'Cake', overall: 5, price: 6.5 }),
+			entry({ meal: 'dinner', overall: 3 })
+		]);
+		expect(s).toEqual({ spent: 12, visits: 2, rating: 4 });
+	});
+	it('has no rating on an empty day', () => {
+		expect(daySummary([])).toEqual({ spent: 0, visits: 0, rating: null });
+	});
+});
+
+describe('monthSummary', () => {
+	const logs = [
+		entry(),
+		entry({ date: '2026-10-16', place: 'Malis', price: 9 }),
+		entry({ date: '2026-10-16', place: 'Brown Coffee', meal: 'dinner' })
+	];
+	it('totals the month and names the most visited place', () => {
+		expect(monthSummary(logs, '2026-10', TODAY)).toEqual({
+			spent: 14.5,
+			visits: 3,
+			daysLogged: 2,
+			daysElapsed: 16,
+			mostVisited: 'Brown Coffee'
+		});
+	});
+	it('counts a whole past month, and has no favorite when empty', () => {
+		expect(monthSummary([], '2026-09', TODAY)).toMatchObject({
+			daysElapsed: 30,
+			mostVisited: null
+		});
+	});
+});
+
+describe('shiftMonth', () => {
+	it('steps across year boundaries', () => {
+		expect(shiftMonth('2026-10', 1)).toBe('2026-11');
+		expect(shiftMonth('2026-12', 1)).toBe('2027-01');
+		expect(shiftMonth('2026-01', -1)).toBe('2025-12');
+		expect(shiftMonth('2026-03', -15)).toBe('2024-12');
 	});
 });
