@@ -18,9 +18,8 @@
 			document.cookie = `tz=${encodeURIComponent(tz)}; path=/; max-age=31536000; samesite=lax`;
 	});
 
-	// Explore doesn't have a page yet, so it stays an inert label rather than a dead link.
-	const navLabels = ['Explore'];
 	const isHome = $derived(page.url.pathname === '/');
+	const isExplore = $derived(page.url.pathname.startsWith('/explore'));
 	const isLog = $derived(page.url.pathname.startsWith('/log'));
 	const isJournal = $derived(page.url.pathname.startsWith('/journal'));
 	const isDashboard = $derived(page.url.pathname.startsWith('/dashboard'));
@@ -33,8 +32,22 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+{#snippet navLink(href: string, label: string, active: boolean)}
+	<a
+		{href}
+		aria-current={active ? 'page' : undefined}
+		class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
+			active ? 'border-accent text-ink' : 'border-transparent text-ink-2'
+		}`}
+	>
+		{label}
+	</a>
+{/snippet}
+
 <ClerkProvider>
-	<header class="border-b border-line bg-surface px-6 lg:h-16">
+	<!-- px-4 on a phone (the pages' own gutter) so the signed-out brand and buttons fit on one
+	     line at 390px. -->
+	<header class="border-b border-line bg-surface px-4 lg:h-16 lg:px-6">
 		<div class="flex items-stretch justify-between gap-4">
 			<a href="/" class="flex items-center gap-2 py-3">
 				<span
@@ -42,72 +55,53 @@
 				>
 					<Icon name="logo" size={18} />
 				</span>
-				<span class="font-display text-lg font-semibold text-ink">Daily Dose of Food</span>
+				<span class="font-display text-lg font-semibold whitespace-nowrap text-ink"
+					>Daily Dose of Food</span
+				>
 			</a>
 
 			<Show when="signed-in">
 				<nav class="flex items-stretch gap-6 text-sm font-medium">
-					<a
-						href="/"
-						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
-							isHome ? 'border-accent text-ink' : 'border-transparent text-ink-2'
-						}`}
-					>
-						Home
-					</a>
-					{#each navLabels as label (label)}
-						<span
-							class="-mb-px hidden cursor-default items-center border-b-2 border-transparent px-1 py-0.5 text-ink-2 sm:flex"
-							>{label}</span
-						>
-					{/each}
-					<a
-						href="/log"
-						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
-							isLog ? 'border-accent text-ink' : 'border-transparent text-ink-2'
-						}`}
-					>
-						Log
-					</a>
-					<a
-						href="/journal"
-						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
-							isJournal ? 'border-accent text-ink' : 'border-transparent text-ink-2'
-						}`}
-					>
-						My journal
-					</a>
-					<a
-						href="/dashboard"
-						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
-							isDashboard ? 'border-accent text-ink' : 'border-transparent text-ink-2'
-						}`}
-					>
-						Dashboard
-					</a>
-					<a
-						href="/review/new"
-						class={`-mb-px hidden items-center border-b-2 px-3 py-0.5 lg:flex ${
-							isWriteReview ? 'border-accent text-ink' : 'border-transparent text-ink-2'
-						}`}
-					>
-						Write a review
-					</a>
+					{@render navLink('/', 'Home', isHome)}
+					{@render navLink('/explore', 'Explore', isExplore)}
+					{@render navLink('/log', 'Log', isLog)}
+					{@render navLink('/journal', 'My journal', isJournal)}
+					{@render navLink('/dashboard', 'Dashboard', isDashboard)}
+					{@render navLink('/review/new', 'Write a review', isWriteReview)}
+				</nav>
+			</Show>
+			<!-- Explore is public, so it's the one destination a signed-out visitor gets. On a phone
+			     there's no room beside Sign in / Sign up; the landing page links to it instead. -->
+			<Show when="signed-out">
+				<nav class="flex items-stretch gap-6 text-sm font-medium">
+					{@render navLink('/explore', 'Explore', isExplore)}
 				</nav>
 			</Show>
 
 			<div class="flex items-center gap-3 py-3">
 				<Show when="signed-out">
 					<SignInButton mode="modal">
-						<button class="text-sm font-medium text-ink-2">Sign in</button>
+						<button class="text-sm font-medium whitespace-nowrap text-ink-2">Sign in</button>
 					</SignInButton>
 					<SignUpButton mode="modal">
-						<button class="rounded-input bg-accent px-3.5 py-2 text-sm font-semibold text-on-accent"
+						<button
+							class="rounded-input bg-accent px-3.5 py-2 text-sm font-semibold whitespace-nowrap text-on-accent"
 							>Sign up</button
 						>
 					</SignUpButton>
 				</Show>
 				<Show when="signed-in">
+					<!-- Explore's way in on a phone: the tab bar has no slot for it (spec §1). -->
+					<a
+						href="/explore"
+						aria-label="Explore"
+						aria-current={isExplore ? 'page' : undefined}
+						class="flex h-9 w-9 items-center justify-center rounded-full hover:bg-sunken lg:hidden {isExplore
+							? 'text-accent-strong'
+							: 'text-ink-2'}"
+					>
+						<Icon name="search" size={19} />
+					</a>
 					<button
 						type="button"
 						aria-label="Notifications"

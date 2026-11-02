@@ -58,6 +58,12 @@
 			<Button href="/sign-up">Get started</Button>
 			<Button href="/sign-in" variant="ghost">Sign in</Button>
 		</div>
+		<!-- Explore is public: the one thing a visitor can look at before signing up. -->
+		<p class="mt-6 text-sm text-ink-2">
+			Or <a href="/explore" class="font-semibold text-accent-strong underline"
+				>browse what people are eating</a
+			> first.
+		</p>
 	</div>
 {:else}
 	<!-- Two columns on desktop, one on mobile. The widths come from the handoff (620 / 320) and
