@@ -19,8 +19,11 @@ export interface LogEntry {
 	title: string;
 	itemType: 'food' | 'drink';
 	qty: number;
-	/** Line total paid (price each × qty) */
+	/** Line total paid (price each × qty, plus tax) */
 	price: number;
+	/** The tax rate on the bill, as a percentage; null for no tax (and for a review's items) */
+	taxPercent: number | null;
+	isFavorite: boolean;
 	meal: MealType;
 	dining: DiningType;
 	/** 1–5 */
@@ -49,6 +52,23 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 /** Price paid for one line: price each × qty, plus tax (a percentage), to the cent. */
 export const lineTotal = (priceEach: number, qty: number, taxPercent = 0) =>
 	cents(priceEach * qty * (1 + taxPercent / 100));
+
+/** What a saved line cost before its tax. */
+export const beforeTax = (l: Pick<LogEntry, 'price' | 'taxPercent'>) =>
+	cents(l.price / (1 + (l.taxPercent ?? 0) / 100));
+
+/** A visit's bill, rebuilt from its saved lines like a receipt: the items before tax, the tax on
+ *  them, what was paid. The tax is the difference, so the three always add up. */
+export function receipt(items: Pick<LogEntry, 'price' | 'taxPercent'>[]) {
+	const total = cents(items.reduce((t, l) => t + l.price, 0));
+	const subtotal = cents(items.reduce((t, l) => t + beforeTax(l), 0));
+	return {
+		subtotal,
+		tax: cents(total - subtotal),
+		total,
+		taxPercent: items.find((l) => l.taxPercent)?.taxPercent ?? null
+	};
+}
 
 export const visitKey = (l: Pick<LogEntry, 'date' | 'meal' | 'place' | 'dining' | 'reviewId'>) =>
 	[l.date, l.meal, l.place, l.dining, l.reviewId ?? ''].join('|');

@@ -82,6 +82,7 @@
 		"keepfocus",
 		"onadd",
 		"onpickmonth",
+		"ondelete",
 		"onreview",
 		"onsaved"
 	]

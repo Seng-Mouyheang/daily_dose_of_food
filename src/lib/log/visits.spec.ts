@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupVisits, lineTotal, visitTitle, type LogEntry } from './visits.ts';
+import { beforeTax, groupVisits, lineTotal, receipt, visitTitle, type LogEntry } from './visits.ts';
 
 let n = 0;
 const log = (over: Partial<LogEntry> = {}): LogEntry => ({
@@ -10,6 +10,8 @@ const log = (over: Partial<LogEntry> = {}): LogEntry => ({
 	itemType: 'drink',
 	qty: 1,
 	price: 2.75,
+	taxPercent: null,
+	isFavorite: false,
 	meal: 'lunch',
 	dining: 'dine_in',
 	overall: 4,
@@ -69,5 +71,26 @@ describe('lineTotal', () => {
 	it('adds tax as a percentage', () => {
 		expect(lineTotal(2.75, 2, 10)).toBe(6.05);
 		expect(lineTotal(2.75, 2, 0)).toBe(5.5);
+	});
+});
+
+describe('receipt', () => {
+	const line = (price: number, taxPercent: number | null) => ({ price, taxPercent });
+	it('rebuilds subtotal, tax and total from saved lines', () => {
+		const r = receipt([line(19.8, 10), line(3.85, 10)]);
+		expect(r).toEqual({ subtotal: 21.5, tax: 2.15, total: 23.65, taxPercent: 10 });
+		expect(beforeTax(line(19.8, 10))).toBe(18);
+	});
+	it('has no tax when the lines carry none', () => {
+		expect(receipt([line(2.75, null), line(2.8, null)])).toEqual({
+			subtotal: 5.55,
+			tax: 0,
+			total: 5.55,
+			taxPercent: null
+		});
+	});
+	it('always adds up, even when a line does not divide back evenly', () => {
+		const r = receipt([line(0.55, 10), line(1.1, 10), line(0.33, 10)]);
+		expect(Math.round((r.subtotal + r.tax) * 100) / 100).toBe(r.total);
 	});
 });

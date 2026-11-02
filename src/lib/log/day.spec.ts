@@ -132,6 +132,8 @@ const entry = (over: Partial<LogEntry> = {}): LogEntry => ({
 	itemType: 'drink',
 	qty: 1,
 	price: 2.75,
+	taxPercent: null,
+	isFavorite: false,
 	meal: 'lunch',
 	dining: 'dine_in',
 	overall: 4,

@@ -14,7 +14,8 @@
 	import MonthSummary from '#lib/log/MonthSummary.svelte';
 	import WeekStrip from '#lib/log/WeekStrip.svelte';
 	import LogVisitForm, { type Saved } from '#lib/log/LogVisitForm.svelte';
-	import { groupVisits, MEALS, visitKey, type MealType } from '#lib/log/visits.ts';
+	import VisitSheet from '#lib/log/VisitSheet.svelte';
+	import { groupVisits, MEALS, visitKey, type MealType, type Visit } from '#lib/log/visits.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -68,6 +69,31 @@
 		clean.searchParams.delete('add');
 		replaceState(clean, {});
 	});
+
+	// The visit open in the sheet, by key: when it's deleted or the day changes it simply isn't found.
+	let openKey = $state<string | null>(null);
+	const openVisit = $derived(visits.find((v) => v.key === openKey) ?? null);
+
+	const json = { 'content-type': 'application/json' };
+
+	async function deleteVisit(v: Visit) {
+		openKey = null;
+		const res = await fetch('/api/log', {
+			method: 'DELETE',
+			headers: json,
+			body: JSON.stringify({ ids: v.items.map((l) => l.id) })
+		});
+		if (!res.ok) {
+			toast.show("Couldn't delete that visit. Try again.");
+			return;
+		}
+		const { rows } = await res.json();
+		await invalidateAll();
+		toast.show(`Visit to ${v.place} deleted`, async () => {
+			await fetch('/api/log', { method: 'PUT', headers: json, body: JSON.stringify({ rows }) });
+			await invalidateAll();
+		});
+	}
 
 	async function undoSave(ids: string[]) {
 		await fetch('/api/log', {
@@ -198,7 +224,7 @@
 				showStreak={isToday}
 			/>
 		{/if}
-		<DayList {visits} {isToday} {flash} onadd={openForm} />
+		<DayList {visits} {isToday} {flash} onadd={openForm} onopen={(key) => (openKey = key)} />
 	</div>
 </main>
 
@@ -230,3 +256,5 @@
 		/>
 	{/key}
 {/if}
+
+<VisitSheet visit={openVisit} onclose={() => (openKey = null)} ondelete={deleteVisit} />

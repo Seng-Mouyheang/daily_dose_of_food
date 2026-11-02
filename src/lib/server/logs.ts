@@ -43,6 +43,8 @@ export function toLogEntry(r: {
 	itemType: string;
 	qty: number;
 	price: string;
+	taxPercent: string | null;
+	isFavorite: boolean;
 	mealType: string;
 	visitType: string;
 	overallRating: number;
@@ -56,6 +58,8 @@ export function toLogEntry(r: {
 		itemType: r.itemType === 'drink' ? 'drink' : 'food',
 		qty: r.qty,
 		price: toNumber(r.price) ?? 0,
+		taxPercent: toNumber(r.taxPercent),
+		isFavorite: r.isFavorite,
 		meal: r.mealType as MealType,
 		dining: r.visitType as DiningType,
 		overall: r.overallRating,
@@ -92,6 +96,8 @@ export function reviewItemToEntry(
 		itemType: i.itemType === 'drink' ? 'drink' : 'food',
 		qty: 1,
 		price: (toNumber(i.price) ?? 0) * (1 + (toNumber(i.taxPercent) ?? 0) / 100),
+		taxPercent: null,
+		isFavorite: false,
 		meal: (r.mealType as MealType | null) ?? 'snack',
 		dining: DINING_OF[r.visitType] ?? 'dine_in',
 		overall: toNumber(r.overall) ?? 0,
@@ -123,6 +129,8 @@ export async function getLogMonth(userId: string, month: string, tz: string): Pr
 				itemType: logs.itemType,
 				qty: logs.qty,
 				price: logs.price,
+				taxPercent: logs.taxPercent,
+				isFavorite: logs.isFavorite,
 				mealType: logs.mealType,
 				visitType: logs.visitType,
 				overallRating: logs.overallRating,
@@ -242,7 +250,10 @@ export async function deleteLogs(userId: string, ids: string[]): Promise<LogRow[
 }
 
 /** Puts back rows from {@link deleteLogs}, always as the viewer's own. */
-export async function restoreLogs(userId: string, rows: LogRow[]): Promise<void> {
+export async function restoreLogs(
+	userId: string,
+	rows: Omit<LogRow, 'userId' | 'reviewId'>[]
+): Promise<void> {
 	if (!rows.length) return;
 	await db
 		.insert(logs)
