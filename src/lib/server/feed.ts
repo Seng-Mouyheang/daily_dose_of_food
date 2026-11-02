@@ -19,7 +19,21 @@
  */
 import { error } from '@sveltejs/kit';
 import type { SQL } from 'drizzle-orm';
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import {
+	and,
+	asc,
+	count,
+	desc,
+	eq,
+	exists,
+	gte,
+	inArray,
+	isNull,
+	lt,
+	lte,
+	or,
+	sql
+} from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type {
 	FeedCategoryRating,
@@ -30,6 +44,7 @@ import type {
 	ReviewComment,
 	Visibility
 } from '#lib/review/card.ts';
+import type { ExploreFilter } from '#lib/explore/explore.ts';
 import type { MonthItemRow, MonthlyStats, MonthReviewRow } from '#lib/review/stats.ts';
 import { summarizeMonth } from '#lib/review/stats.ts';
 import { z } from 'zod';
@@ -100,7 +115,8 @@ export interface FeedCursor {
 }
 
 export interface FeedPage {
-	reviews: FeedReview[];
+	/** `isOwn`: the viewer wrote it (Explore's "Your favorite" and its hidden bookmark). */
+	reviews: (FeedReview & { isOwn: boolean })[];
 	/** Null on the last page. */
 	nextCursor: FeedCursor | null;
 }
@@ -503,7 +519,12 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
  * trade at this size, and narrowing the index is a migration this milestone doesn't make.
  */
 export async function getForYouFeed(
-	opts: { limit?: number; cursor?: FeedCursor | null; viewerId?: string | null } = {}
+	opts: {
+		limit?: number;
+		cursor?: FeedCursor | null;
+		viewerId?: string | null;
+		filter?: ExploreFilter;
+	} = {}
 ): Promise<FeedPage> {
 	const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)), MAX_LIMIT);
 	const cursor = opts.cursor ?? null;
@@ -552,7 +573,7 @@ export async function getForYouFeed(
 		.from(reviews)
 		.innerJoin(users, eq(reviews.userId, users.id))
 		.innerJoin(places, eq(reviews.placeId, places.id))
-		.where(olderThanCursor ? and(published, olderThanCursor) : published)
+		.where(and(published, olderThanCursor, exploreFilterWhere(opts.filter ?? 'all')))
 		.orderBy(desc(reviews.publishedAt), desc(reviews.id))
 		// One more than asked for: if it comes back, there is a next page. Cheaper than a
 		// separate count(*) over the whole table for a question that only needs a yes/no.
@@ -570,7 +591,54 @@ export async function getForYouFeed(
 			? { publishedAt: last.publishedAt.toISOString(), id: last.id }
 			: null;
 
-	return { reviews: page.map((row) => assembleReview(row, children)), nextCursor };
+	const viewerId = opts.viewerId ?? null;
+	return {
+		reviews: page.map((row) => ({
+			...assembleReview(row, children),
+			isOwn: viewerId !== null && row.userId === viewerId
+		})),
+		nextCursor
+	};
+}
+
+/** Explore's chips as SQL, so the filter runs before the LIMIT and paging stays correct. A
+ *  review covering a dish and a drink matches if either item does. Matched by slug, not by
+ *  display name, so renaming a type in the lookup table doesn't silently empty a chip. */
+function exploreFilterWhere(filter: ExploreFilter): SQL | undefined {
+	const itemOfThisReview = eq(reviewItems.reviewId, reviews.id);
+	switch (filter) {
+		case 'all':
+			return undefined;
+		case 'breakfast':
+		case 'lunch':
+		case 'dinner':
+			return eq(reviews.mealType, filter);
+		case 'drinks':
+			return exists(
+				db
+					.select({ one: sql`1` })
+					.from(reviewItems)
+					.where(and(itemOfThisReview, eq(reviewItems.itemType, 'drink')))
+			);
+		case 'desserts':
+			return exists(
+				db
+					.select({ one: sql`1` })
+					.from(reviewItems)
+					.innerJoin(reviewItemFoodTypes, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
+					.innerJoin(foodTypes, eq(foodTypes.id, reviewItemFoodTypes.foodTypeId))
+					.where(and(itemOfThisReview, eq(foodTypes.slug, 'dessert')))
+			);
+		case 'khmer':
+			return exists(
+				db
+					.select({ one: sql`1` })
+					.from(reviewItems)
+					.innerJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
+					.innerJoin(cuisineTypes, eq(cuisineTypes.id, foodItemDetails.cuisineTypeId))
+					.where(and(itemOfThisReview, eq(cuisineTypes.slug, 'khmer')))
+			);
+	}
 }
 
 /** A review's comments: top-level threads first (pinned, then newest), then their replies newest
