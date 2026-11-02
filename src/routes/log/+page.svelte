@@ -99,10 +99,16 @@
 		await invalidateAll();
 	}
 
-	async function onsaved(s: Saved, another: boolean) {
+	async function onsaved(s: Saved, then: 'close' | 'another' | 'review') {
 		const text = `Logged ${s.count} ${s.count === 1 ? 'item' : 'items'} at ${s.place}`;
 		const undo = () => undoSave(s.ids);
-		if (another) {
+		if (then === 'review') {
+			// Logged, and now written up as a review: publishing it takes the place of these logs.
+			formInit = null;
+			await goto(reviewHref(s.ids));
+			return;
+		}
+		if (then === 'another') {
 			// A fresh form on the same date and meal; Undo takes this save back and drops the notice.
 			const notice = {
 				text,
@@ -123,6 +129,8 @@
 			if (flash === key) flash = null;
 		}, 2600);
 	}
+
+	const reviewHref = (ids: string[]) => `/review/new?fromLog=${ids.join(',')}`;
 
 	const prevDay = $derived(data.day > data.first ? addDays(data.day, -1) : null);
 	const nextDay = $derived(isToday ? null : addDays(data.day, 1));
@@ -253,4 +261,9 @@
 	{/key}
 {/if}
 
-<VisitSheet visit={openVisit} onclose={() => (openKey = null)} ondelete={deleteVisit} />
+<VisitSheet
+	visit={openVisit}
+	onclose={() => (openKey = null)}
+	ondelete={deleteVisit}
+	onreview={(v) => goto(reviewHref(v.items.map((l) => l.id)))}
+/>

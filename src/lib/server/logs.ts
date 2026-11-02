@@ -6,9 +6,11 @@
  */
 import { and, count, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import { addDays, monthGrid, zonedDayStart } from '#lib/dashboard/period.ts';
+import type { SourceLog } from '#lib/log/review.ts';
 import type { LogVisitInput } from '#lib/log/schema.ts';
 import type { HistoryRow, PlaceRow } from '#lib/log/suggest.ts';
 import { lineTotal, type DiningType, type LogEntry, type MealType } from '#lib/log/visits.ts';
+import type { PlaceOption } from '#lib/review/draft.svelte.ts';
 import { live } from './dashboard.ts';
 import { db } from './db/index.ts';
 import {
@@ -319,4 +321,64 @@ export async function getPlaceHistory(userId: string): Promise<PlaceRow[]> {
 			.where(live(userId))
 	]);
 	return [...own, ...reviewed];
+}
+
+/** The viewer's own logs, not yet a review, that a review is being written from, with the place
+ *  they point at (null when it was only typed). Ids that aren't theirs are simply missing. */
+export async function getLogsForReview(
+	userId: string,
+	ids: string[]
+): Promise<{ logs: SourceLog[]; place: PlaceOption | null }> {
+	const rows = await db
+		.select({
+			log: logs,
+			placeName: places.name,
+			addressLine1: places.addressLine1,
+			city: places.city
+		})
+		.from(logs)
+		.leftJoin(places, eq(logs.placeId, places.id))
+		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), isNull(logs.reviewId)))
+		.orderBy(logs.createdAt);
+
+	const first = rows[0];
+	return {
+		logs: rows.map(({ log: l, placeName: name }) => ({
+			loggedOn: l.loggedOn,
+			placeName: name ?? l.placeName,
+			title: l.title,
+			itemType: l.itemType as SourceLog['itemType'],
+			foodTypeId: l.foodTypeId,
+			drinkTypeId: l.drinkTypeId,
+			cuisineTypeId: l.cuisineTypeId,
+			qty: l.qty,
+			price: toNumber(l.price) ?? 0,
+			taxPercent: toNumber(l.taxPercent),
+			isFavorite: l.isFavorite,
+			mealType: l.mealType as MealType,
+			visitType: l.visitType as DiningType,
+			overallRating: l.overallRating,
+			note: l.note
+		})),
+		place:
+			first?.log.placeId && first.placeName
+				? {
+						id: first.log.placeId,
+						name: first.placeName,
+						addressLine1: first.addressLine1,
+						city: first.city,
+						distanceMeters: null
+					}
+				: null
+	};
+}
+
+/** Marks logs as published in a review, so the Dashboard and the Log count the review instead.
+ *  Only the viewer's own, and only ones not already linked: safe to repeat. */
+export async function linkLogsToReview(userId: string, ids: string[], reviewId: string) {
+	if (!ids.length) return;
+	await db
+		.update(logs)
+		.set({ reviewId })
+		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), isNull(logs.reviewId)));
 }

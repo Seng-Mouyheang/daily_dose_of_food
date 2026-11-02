@@ -7,7 +7,7 @@
 	import { beforeTax, receipt, type Visit } from './visits.ts';
 
 	/** One saved visit, opened from the day list: what you had, the bill like a receipt, how you
-	 *  rated it and your note, with Delete (its toast offers Undo) and, later, Write a review.
+	 *  rated it and your note, with Delete (its toast offers Undo) and Write a review (opens the review form, filled in from it).
 	 *  A bottom sheet on a phone and a 420px dialog on desktop: a native <dialog> opened with
 	 *  showModal(), for the focus trap, Esc and an inert page behind it. */
 	let {

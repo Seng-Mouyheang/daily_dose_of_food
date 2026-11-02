@@ -15,7 +15,7 @@
 	 *  averages, and a note. Each item has its price before tax (from last time), a quantity and
 	 *  a heart for the ones you loved; the bill's tax and total sit under them like a receipt.
 	 *  The last card offers the long version, a full review, for anything worth sharing. */
-	let { form, onreview }: { form: LogForm; onreview?: () => void } = $props();
+	let { form, busy = false }: { form: LogForm; busy?: boolean } = $props();
 
 	// Most visits have no tax, so the row stays out of the way until asked for: "Add tax" opens it,
 	// and clearing it puts the link back. A tax carried over from the item's last visit opens it too.
@@ -238,13 +238,14 @@
 		<span class="flex min-w-40 flex-1 flex-col">
 			<b class="text-[14.5px] font-semibold">Worth sharing?</b>
 			<small class="text-[13px] text-ink-2"
-				>Turn it into a full review with photos and detailed ratings.</small
+				>Save this log, then turn it into a full review with photos and detailed ratings.</small
 			>
 		</span>
 		<button
-			type="button"
-			disabled={!onreview}
-			onclick={onreview}
+			type="submit"
+			name="after"
+			value="review"
+			disabled={busy}
 			class="min-h-11 rounded-input px-2.5 text-sm font-semibold text-accent-strong enabled:hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
 			>Write a review</button
 		>

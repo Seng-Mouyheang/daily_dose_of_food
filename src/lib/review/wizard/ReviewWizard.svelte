@@ -26,7 +26,9 @@
 		user,
 		formMessage = null,
 		mode = 'new',
-		initial = null
+		initial = null,
+		fromLog = [],
+		backHref
 	}: {
 		lookups: Awaited<ReturnType<typeof getReviewFormLookups>>;
 		user: { displayName: string; avatarUrl: string | null } | null;
@@ -34,13 +36,21 @@
 		mode?: 'new' | 'edit';
 		/** Required in edit mode: the review as it stands, in the wizard's own shape. */
 		initial?: ReviewDraftSnapshot | null;
+		/** New review only: the Log visit it starts from (`initial` is then that visit's data).
+		 *  Publishing links these logs to the review. */
+		fromLog?: string[];
+		/** Where the mobile header's back arrow goes; the edit page's own review, else home. */
+		backHref?: string;
 	} = $props();
 
 	const isEdit = $derived(mode === 'edit');
 	const draft = new ReviewDraft();
 	// Read once, on purpose: the form owns its state from here on.
 	// svelte-ignore state_referenced_locally
-	if (initial) draft.loadFrom(initial);
+	if (initial) draft.loadFrom(initial, isEdit ? 4 : 1);
+	// A review started from a log never reads or writes the half-written new-review draft: the
+	// log is what it starts from, and the draft is left for the next blank review.
+	const keepsDraft = $derived(!isEdit && !initial);
 	/** The step a failed Continue/sidebar jump last landed on, or null if none has failed
 	 *  since. Paired with `stepError` below (derived, not stored) rather than a plain message
 	 *  string, so the banner — and the red field outlines driven by the same checks — clear
@@ -60,14 +70,14 @@
 		})
 	);
 
-	// The localStorage draft is the new-review one only. An edit must never overwrite (or be
-	// overwritten by) a half-written new review.
+	// The localStorage draft is the blank new-review one only. An edit, or a review started from
+	// a log, must never overwrite (or be overwritten by) a half-written new review.
 	onMount(() => {
-		if (!isEdit) draft.restoreFromLocalStorage();
+		if (keepsDraft) draft.restoreFromLocalStorage();
 	});
 
 	$effect(() => {
-		if (!isEdit) draft.saveToLocalStorage();
+		if (keepsDraft) draft.saveToLocalStorage();
 	});
 
 	const STEPS = $derived([
@@ -187,14 +197,14 @@
 		class="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3 lg:hidden"
 	>
 		<a
-			href={isEdit ? `/review/${draft.reviewId}` : '/'}
+			href={backHref ?? (isEdit ? `/review/${draft.reviewId}` : '/')}
 			aria-label={isEdit ? 'Leave without saving' : 'Leave without publishing'}
 			class="-ml-2 p-2 text-ink-2"
 		>
 			<Icon name="chevL" />
 		</a>
 		<span class="text-sm font-semibold text-ink">{isEdit ? 'Edit review' : 'New review'}</span>
-		{#if isEdit}
+		{#if !keepsDraft}
 			<span class="w-9" aria-hidden="true"></span>
 		{:else}
 			<button type="button" class="text-sm font-medium text-accent-strong" onclick={saveDraftNow}>
@@ -279,12 +289,13 @@
 				submitting = true;
 				return async ({ result, update }) => {
 					submitting = false;
-					if (result.type === 'redirect' && !isEdit) ReviewDraft.clearLocalStorage();
+					if (result.type === 'redirect' && keepsDraft) ReviewDraft.clearLocalStorage();
 					await update();
 				};
 			}}
 		>
 			<input type="hidden" name="payload" value={payloadJson} />
+			{#if fromLog.length}<input type="hidden" name="fromLog" value={fromLog.join(',')} />{/if}
 
 			<div class="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-6 lg:px-10 lg:py-10">
 				<div>
@@ -349,7 +360,7 @@
 					</Button>
 				{/if}
 				<span class="hidden flex-1 lg:block"></span>
-				{#if !isEdit}
+				{#if keepsDraft}
 					<button
 						type="button"
 						class="hidden text-sm font-medium text-accent-strong lg:inline"

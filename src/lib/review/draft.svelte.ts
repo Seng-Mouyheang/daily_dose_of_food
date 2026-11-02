@@ -253,10 +253,11 @@ export class ReviewDraft {
 	}
 
 	/** Fills the wizard from an existing review (see getReviewForEdit) and opens it on the
-	 *  Review step, where every section's Edit link jumps straight to that step. */
-	loadFrom(snapshot: ReviewDraftSnapshot) {
+	 *  Review step, where every section's Edit link jumps straight to that step. A review
+	 *  started from a log opens on the first step instead. */
+	loadFrom(snapshot: ReviewDraftSnapshot, step = 4) {
 		Object.assign(this, structuredClone(snapshot));
-		this.step = 4;
+		this.step = step;
 	}
 
 	static clearLocalStorage() {

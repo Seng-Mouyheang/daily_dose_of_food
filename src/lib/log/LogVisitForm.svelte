@@ -23,7 +23,7 @@
 	 *  phone and a 600px dialog on desktop. A native <dialog> opened with showModal(): focus
 	 *  trap, Esc and an inert page behind it come from the browser.
 	 *
-	 *  Saving posts the visit to the page's `save` action. "Save and log another" reopens a fresh
+	 *  Saving posts the visit to the page's `save` action. "Write a review" saves it and goes on to the review form. "Save and log another" reopens a fresh
 	 *  form on the same date and meal; its confirmation, with Undo, sits inside the form because
 	 *  the app's toast would be hidden behind a modal. */
 	let {
@@ -40,7 +40,7 @@
 		/** What the last "Save and log another" saved, with a way to take it back */
 		notice?: { text: string; undo: () => void };
 		onclose: () => void;
-		onsaved: (saved: Saved, another: boolean) => void;
+		onsaved: (saved: Saved, then: 'close' | 'another' | 'review') => void;
 	} = $props();
 
 	// The parent mounts a fresh form each time it opens, so seeding from props once is the point.
@@ -88,14 +88,17 @@
 		{onkeydown}
 		use:enhance={({ formData, cancel, submitter }) => {
 			if (!form.canSave()) return cancel();
-			const another = submitter?.getAttribute('value') === 'another';
+			const then =
+				({ another: 'another', review: 'review' } as const)[
+					submitter?.getAttribute('value') ?? ''
+				] ?? 'close';
 			formData.set('payload', JSON.stringify(form.payload()));
 			busy = true;
 			failure = '';
 			return async ({ result }) => {
 				busy = false;
 				if (result.type === 'success' && result.data?.saved) {
-					onsaved({ ...result.data.saved, place: form.place!.name } as Saved, another);
+					onsaved({ ...result.data.saved, place: form.place!.name } as Saved, then);
 				} else if (result.type === 'failure') {
 					failure = String(result.data?.message ?? 'Could not save. Try again.');
 				} else failure = 'Could not save. Check your connection and try again.';
@@ -148,7 +151,7 @@
 			{#if form.step === 1}
 				<LogStepWhere {form} {today} {suggestions} />
 			{:else}
-				<LogStepHow {form} />
+				<LogStepHow {form} {busy} />
 			{/if}
 		</div>
 
@@ -170,7 +173,7 @@
 					<span class="flex items-center gap-1">
 						<button
 							type="submit"
-							name="another"
+							name="after"
 							value="another"
 							disabled={busy}
 							class="min-h-11 rounded-input px-2.5 text-sm font-semibold text-ink-2 hover:bg-sunken hover:text-ink disabled:opacity-50"
