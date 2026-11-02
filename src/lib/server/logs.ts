@@ -4,9 +4,9 @@
  * so a meal is never listed twice. Suggestions are ranked in log/suggest.ts from the history
  * fetched here.
  */
-import { and, count, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, lt, lte, notExists, sql } from 'drizzle-orm';
 import { addDays, monthGrid, zonedDayStart } from '#lib/dashboard/period.ts';
-import type { SourceLog } from '#lib/log/review.ts';
+import type { LinkableLog } from '#lib/log/review.ts';
 import type { LogVisitInput } from '#lib/log/schema.ts';
 import type { HistoryRow, PlaceRow } from '#lib/log/suggest.ts';
 import { lineTotal, type DiningType, type LogEntry, type MealType } from '#lib/log/visits.ts';
@@ -108,6 +108,16 @@ export function reviewItemToEntry(
 	};
 }
 
+/** The viewer's logs that stand on their own: not published as a review, or published as one
+ *  that is archived or deleted, which would otherwise hide the meal from the Log entirely. */
+const standalone = (userId: string) =>
+	notExists(
+		db
+			.select({ one: sql`1` })
+			.from(reviews)
+			.where(and(eq(reviews.id, logs.reviewId), live(userId)))
+	);
+
 const placeName = sql<string>`coalesce(${places.name}, ${logs.placeName})`;
 
 /** Everything on the viewer's calendar for one month ("YYYY-MM"), oldest first. */
@@ -143,7 +153,7 @@ export async function getLogMonth(userId: string, month: string, tz: string): Pr
 			.where(
 				and(
 					eq(logs.userId, userId),
-					isNull(logs.reviewId),
+					standalone(userId),
 					gte(logs.loggedOn, first),
 					lte(logs.loggedOn, last)
 				)
@@ -192,7 +202,7 @@ export async function getDayCounts(userId: string, tz: string): Promise<Record<s
 		db
 			.select({ day: logs.loggedOn, n: count() })
 			.from(logs)
-			.where(and(eq(logs.userId, userId), isNull(logs.reviewId)))
+			.where(and(eq(logs.userId, userId), standalone(userId)))
 			.groupBy(logs.loggedOn),
 		db
 			.select({ day: reviewDay, n: count() })
@@ -247,7 +257,7 @@ export async function deleteLogs(userId: string, ids: string[]): Promise<LogRow[
 	if (!ids.length) return [];
 	return db
 		.delete(logs)
-		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), isNull(logs.reviewId)))
+		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), standalone(userId)))
 		.returning();
 }
 
@@ -313,7 +323,7 @@ export async function getPlaceHistory(userId: string): Promise<PlaceRow[]> {
 			.select({ place: placeName, placeId: logs.placeId, address })
 			.from(logs)
 			.leftJoin(places, eq(logs.placeId, places.id))
-			.where(and(eq(logs.userId, userId), isNull(logs.reviewId))),
+			.where(and(eq(logs.userId, userId), standalone(userId))),
 		db
 			.select({ place: places.name, placeId: reviews.placeId, address })
 			.from(reviews)
@@ -328,7 +338,7 @@ export async function getPlaceHistory(userId: string): Promise<PlaceRow[]> {
 export async function getLogsForReview(
 	userId: string,
 	ids: string[]
-): Promise<{ logs: SourceLog[]; place: PlaceOption | null }> {
+): Promise<{ logs: LinkableLog[]; place: PlaceOption | null }> {
 	const rows = await db
 		.select({
 			log: logs,
@@ -344,10 +354,12 @@ export async function getLogsForReview(
 	const first = rows[0];
 	return {
 		logs: rows.map(({ log: l, placeName: name }) => ({
+			id: l.id,
+			placeId: l.placeId,
 			loggedOn: l.loggedOn,
 			placeName: name ?? l.placeName,
 			title: l.title,
-			itemType: l.itemType as SourceLog['itemType'],
+			itemType: l.itemType as LinkableLog['itemType'],
 			foodTypeId: l.foodTypeId,
 			drinkTypeId: l.drinkTypeId,
 			cuisineTypeId: l.cuisineTypeId,

@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { z } from 'zod';
-import { logsToReviewDraft } from '#lib/log/review.ts';
+import { logsOfVisit, logsToReviewDraft } from '#lib/log/review.ts';
 import { requireUser } from '#lib/server/auth.ts';
 import { getLogsForReview, linkLogsToReview } from '#lib/server/logs.ts';
 import { getReviewFormLookups } from '#lib/server/lookups.ts';
@@ -8,11 +8,11 @@ import { InvalidPhotoError, publishReview, ReviewOwnershipError } from '#lib/ser
 import { publishReviewSchema } from '#lib/review/schema.ts';
 import type { Actions, PageServerLoad } from './$types';
 
-/** The ids in `?fromLog=a,b` / the form's `fromLog` field: a visit's logs, at most 20 like a visit. */
+/** The ids in `?fromLog=a,b` / the form's `fromLog` field: a visit's logs. A visit has no cap
+ *  (groupVisits merges every save with the same day, meal, place and dining), so neither do these. */
 const logIds = (raw: unknown) =>
 	z
 		.array(z.uuid())
-		.max(20)
 		.catch([])
 		.parse(
 			String(raw ?? '')
@@ -79,8 +79,14 @@ export const actions = {
 			throw err;
 		}
 
-		// Written from a visit in the Log: those logs are now this review, counted once.
-		await linkLogsToReview(user.id, logIds(form.get('fromLog')), reviewId);
+		// Written from a visit in the Log: those logs are now this review, counted once. Only the
+		// ones that are this visit (the field is the client's word), and linkLogsToReview keeps
+		// to the viewer's own.
+		const ids = logIds(form.get('fromLog'));
+		if (ids.length) {
+			const { logs } = await getLogsForReview(user.id, ids);
+			await linkLogsToReview(user.id, logsOfVisit(logs, parsed.data), reviewId);
+		}
 
 		redirect(303, `/review/${reviewId}`);
 	}

@@ -22,6 +22,31 @@ export interface SourceLog {
 	note: string | null;
 }
 
+/** A {@link SourceLog} that can also be linked: with its id and the place it points at. */
+export interface LinkableLog extends SourceLog {
+	id: string;
+	placeId: string | null;
+}
+
+/** The ids of the logs that are part of the visit a review describes: same day and same place.
+ *  Anything else a client sends along is not this visit and stays in the Log. A log typed in with
+ *  just a place name matches a place picked since, since the two can't be told apart. */
+export function logsOfVisit(
+	logs: LinkableLog[],
+	review: {
+		visitedAt: string;
+		place: { kind: 'existing'; placeId: string } | { kind: 'new'; name: string };
+	}
+): string[] {
+	const day = review.visitedAt.slice(0, 10);
+	const name = (s: string | null) => (s ?? '').trim().toLowerCase();
+	const samePlace = (l: LinkableLog) =>
+		review.place.kind === 'existing'
+			? (l.placeId ?? review.place.placeId) === review.place.placeId
+			: !l.placeId && name(l.placeName) === name(review.place.name);
+	return logs.filter((l) => l.loggedOn === day && samePlace(l)).map((l) => l.id);
+}
+
 /** The review form's starting point for a visit: one dish and one drink fit the wizard, so the
  *  first of each carries over with its price, kind, rating and heart, and anything beyond them
  *  is listed in the description as "Also had". A quantity stays in the name ("2× Latte") so the

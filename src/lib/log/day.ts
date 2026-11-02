@@ -57,8 +57,12 @@ export function dayLabel(day: string, today: string, short = false): string {
 	return `${weekday(day, short ? 'short' : 'long')}, ${date}`;
 }
 
-const validDay = (s: string | null): s is string =>
-	s !== null && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+const validDay = (s: string | null): s is string => {
+	if (s === null || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+	const t = Date.parse(`${s}T00:00:00Z`);
+	// JS rolls 2026-02-30 over to 2026-03-02, so the round trip must give the same day back.
+	return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s;
+};
 const validMonth = (s: string | null): s is string =>
 	s !== null && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 

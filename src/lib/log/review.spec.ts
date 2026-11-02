@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { logsToReviewDraft, type SourceLog } from './review.ts';
+import { logsOfVisit, logsToReviewDraft, type LinkableLog, type SourceLog } from './review.ts';
 
 const log = (over: Partial<SourceLog> = {}): SourceLog => ({
 	loggedOn: '2026-11-01',
@@ -81,5 +81,43 @@ describe('logsToReviewDraft', () => {
 
 	it('has no description when there is nothing to say', () => {
 		expect(logsToReviewDraft([log()], null, 'r1').description).toBe('');
+	});
+});
+
+describe('logsOfVisit', () => {
+	const PLACE = 'c0ffee00-0000-4000-8000-000000000001';
+	const OTHER = 'c0ffee00-0000-4000-8000-000000000002';
+	const link = (id: string, over: Partial<LinkableLog> = {}): LinkableLog => ({
+		...log(),
+		id,
+		placeId: PLACE,
+		...over
+	});
+	const existing = {
+		visitedAt: '2026-11-01T00:00:00.000Z',
+		place: { kind: 'existing', placeId: PLACE }
+	} as const;
+
+	it('keeps the logs of the reviewed day and place', () => {
+		expect(logsOfVisit([link('a'), link('b')], existing)).toEqual(['a', 'b']);
+	});
+	it('drops logs from another day or another place', () => {
+		const logs = [link('a'), link('b', { loggedOn: '2026-10-31' }), link('c', { placeId: OTHER })];
+		expect(logsOfVisit(logs, existing)).toEqual(['a']);
+	});
+	it('lets a typed-in place match the place picked for the review', () => {
+		expect(logsOfVisit([link('a', { placeId: null })], existing)).toEqual(['a']);
+	});
+	it('matches a new place by name, ignoring case', () => {
+		const review = {
+			visitedAt: existing.visitedAt,
+			place: { kind: 'new', name: ' brown coffee ' }
+		} as const;
+		const logs = [
+			link('a', { placeId: null }),
+			link('b', { placeId: null, placeName: 'Elsewhere' }),
+			link('c')
+		];
+		expect(logsOfVisit(logs, review)).toEqual(['a']);
 	});
 });

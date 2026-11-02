@@ -105,6 +105,7 @@ describe('parseLogQuery', () => {
 	it('ignores a bad day', () => {
 		expect(q('day=nope').day).toBe(TODAY);
 		expect(q('day=2026-13-45').day).toBe(TODAY);
+		expect(q('day=2026-02-30').day).toBe(TODAY);
 	});
 	it('lets the calendar browse another month, within range', () => {
 		expect(q('day=2026-10-01&month=2026-07')).toEqual({ day: '2026-10-01', month: '2026-07' });
