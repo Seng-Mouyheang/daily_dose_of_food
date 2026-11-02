@@ -21,11 +21,6 @@
 	let { data }: PageProps = $props();
 
 	let sheet = $state(false);
-	// Picking a day in the month sheet lands on a new day: that's the cue to put the sheet away.
-	$effect(() => {
-		void data.day;
-		sheet = false;
-	});
 
 	const dayEntries = $derived(data.entries.filter((e) => e.date === data.day));
 	const visits = $derived(groupVisits(dayEntries));
@@ -235,6 +230,7 @@
 		today={data.today}
 		first={data.first}
 		counts={data.counts}
+		onpick={() => (sheet = false)}
 	/>
 	<a
 		href={logHref(data.today, data.today)}

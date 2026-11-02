@@ -84,6 +84,7 @@
 		"onpickmonth",
 		"ondelete",
 		"onreview",
-		"onsaved"
+		"onsaved",
+		"onpick"
 	]
 }

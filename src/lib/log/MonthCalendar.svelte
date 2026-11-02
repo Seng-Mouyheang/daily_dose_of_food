@@ -5,19 +5,21 @@
 
 	/** A month of days, Monday first. The desktop page keeps it on screen; on mobile it fills the
 	 *  month sheet. Arrows browse months without changing the day on screen (`?month=`); a day is a
-	 *  link. */
+	 *  link; `onpick` hears a tap on one, even on the day already open. */
 	let {
 		month,
 		day,
 		today,
 		first,
-		counts
+		counts,
+		onpick
 	}: {
 		month: string;
 		day: string;
 		today: string;
 		first: string;
 		counts: Record<string, number>;
+		onpick?: () => void;
 	} = $props();
 
 	const grid = $derived(monthGrid(month));
@@ -57,30 +59,31 @@
 			{@const off = d > today || d < first}
 			{@const n = counts[d] ?? 0}
 			{@const selected = d === day}
-			<svelte:element
-				this={off ? 'span' : 'a'}
-				href={off ? undefined : logHref(d, today, month)}
-				aria-current={selected ? 'date' : undefined}
-				aria-disabled={off ? 'true' : undefined}
-				aria-label="{dayLabel(d, today)}{off ? '' : `, ${n} ${n === 1 ? 'log' : 'logs'}`}"
-				data-sveltekit-noscroll
-				data-sveltekit-keepfocus
-				style:grid-column-start={d === grid.days[0] ? grid.lead + 1 : undefined}
-				class="group grid h-11 place-items-center text-sm font-medium tabular-nums {off
-					? 'opacity-45'
-					: ''}"
-			>
+			{@const cell = 'group grid h-11 place-items-center text-sm font-medium tabular-nums'}
+			{@const start = d === grid.days[0] ? grid.lead + 1 : undefined}
+			{#if off}
 				<span
-					class="grid h-[38px] w-[38px] place-items-center rounded-full transition-colors {selected
-						? 'bg-accent font-bold text-on-accent'
-						: n
-							? 'bg-accent-soft text-accent-strong'
-							: ''} {d === today && !selected ? 'ring-[1.5px] ring-accent ring-inset' : ''} {off ||
-					selected
-						? ''
-						: 'group-hover:bg-sunken'}">{Number(d.slice(8))}</span
+					aria-disabled="true"
+					aria-label={dayLabel(d, today)}
+					style:grid-column-start={start}
+					class="{cell} opacity-45"
 				>
-			</svelte:element>
+					{@render num(d, n, selected, off)}
+				</span>
+			{:else}
+				<a
+					href={logHref(d, today, month)}
+					onclick={onpick}
+					aria-current={selected ? 'date' : undefined}
+					aria-label="{dayLabel(d, today)}, {n} {n === 1 ? 'log' : 'logs'}"
+					data-sveltekit-noscroll
+					data-sveltekit-keepfocus
+					style:grid-column-start={start}
+					class={cell}
+				>
+					{@render num(d, n, selected, off)}
+				</a>
+			{/if}
 		{/each}
 	</div>
 
@@ -93,3 +96,16 @@
 		>
 	</div>
 </div>
+
+{#snippet num(d: string, n: number, selected: boolean, off: boolean)}
+	<span
+		class="grid h-[38px] w-[38px] place-items-center rounded-full transition-colors {selected
+			? 'bg-accent font-bold text-on-accent'
+			: n
+				? 'bg-accent-soft text-accent-strong'
+				: ''} {d === today && !selected ? 'ring-[1.5px] ring-accent ring-inset' : ''} {off ||
+		selected
+			? ''
+			: 'group-hover:bg-sunken'}">{Number(d.slice(8))}</span
+	>
+{/snippet}
