@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { reviewComments, reviewLikes, reviewSaves } from './engagement.ts';
+import { logs } from './logs.ts';
 import { mediaFiles } from './media.ts';
 import { placeCategories, places } from './places.ts';
 import { cuisineTypes, drinkTypes, foodTypes } from './lookups.ts';
@@ -22,6 +23,15 @@ import { users } from './users.ts';
 export const usersRelations = relations(users, ({ one, many }) => ({
 	avatar: one(mediaFiles, { fields: [users.avatarMediaId], references: [mediaFiles.id] }),
 	reviews: many(reviews)
+}));
+
+export const logsRelations = relations(logs, ({ one }) => ({
+	user: one(users, { fields: [logs.userId], references: [users.id] }),
+	place: one(places, { fields: [logs.placeId], references: [places.id] }),
+	review: one(reviews, { fields: [logs.reviewId], references: [reviews.id] }),
+	foodType: one(foodTypes, { fields: [logs.foodTypeId], references: [foodTypes.id] }),
+	drinkType: one(drinkTypes, { fields: [logs.drinkTypeId], references: [drinkTypes.id] }),
+	cuisine: one(cuisineTypes, { fields: [logs.cuisineTypeId], references: [cuisineTypes.id] })
 }));
 
 export const mediaFilesRelations = relations(mediaFiles, ({ one }) => ({

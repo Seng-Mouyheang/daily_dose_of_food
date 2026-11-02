@@ -78,6 +78,13 @@
 		"ddof",
 		"onmore",
 		"onopenchange",
-		"unarchiving"
+		"unarchiving",
+		"keepfocus",
+		"onadd",
+		"onpickmonth",
+		"ondelete",
+		"onreview",
+		"onsaved",
+		"onpick"
 	]
 }

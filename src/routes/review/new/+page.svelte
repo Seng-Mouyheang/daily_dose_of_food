@@ -5,4 +5,11 @@
 	let { data, form }: PageProps = $props();
 </script>
 
-<ReviewWizard lookups={data.lookups} user={data.user} formMessage={form?.message ?? null} />
+<ReviewWizard
+	lookups={data.lookups}
+	user={data.user}
+	formMessage={form?.message ?? null}
+	initial={data.initial}
+	fromLog={data.fromLog}
+	backHref={data.backHref}
+/>
