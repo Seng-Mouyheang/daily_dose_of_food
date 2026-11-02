@@ -7,6 +7,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import { toast } from '#lib/components/toast.svelte.ts';
 	import Icon from '#lib/components/Icon.svelte';
+	import FilterPill from '#lib/components/FilterPill.svelte';
 	import Tabs from '#lib/components/Tabs.svelte';
 	import JournalRow from '#lib/journal/JournalRow.svelte';
 	import {
@@ -247,14 +248,11 @@
 		<div class="flex items-center justify-between gap-1.5">
 			<nav aria-label="Filter" class="flex min-w-0 gap-1">
 				{#each JOURNAL_FILTERS as f (f.value)}
-					{@const on = query.filter === f.value}
-					<a
+					<FilterPill
 						href={journalHref(query, { filter: f.value })}
-						aria-current={on ? 'true' : undefined}
-						class="inline-flex h-[30px] shrink-0 items-center rounded-full border px-2.5 text-[13px] font-medium transition-colors {on
-							? 'border-transparent bg-accent-soft text-accent-strong'
-							: 'border-line bg-surface text-ink-2 hover:border-ink-3'}">{f.label}</a
-					>
+						label={f.label}
+						selected={query.filter === f.value}
+					/>
 				{/each}
 			</nav>
 			<!-- The sort menu. Its options are links, so the chosen order is in the URL like the
