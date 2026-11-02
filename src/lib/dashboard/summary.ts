@@ -18,6 +18,8 @@ export interface DashItem {
 
 export interface DashLog {
 	id: string;
+	/** Where the entry opens: a review's page, or the day in the Log for a quick log. */
+	href: string;
 	/** Local visit date, "YYYY-MM-DD". */
 	date: string;
 	title: string;

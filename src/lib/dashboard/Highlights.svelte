@@ -18,7 +18,7 @@
 {#snippet row(kind: 'top' | 'value' | 'splurge', label: string, l: DashLog)}
 	<li>
 		<a
-			href="/review/{l.id}"
+			href={l.href}
 			class="flex min-h-11 items-center gap-3 rounded-input px-2 py-2 text-ink-3 hover:bg-sunken"
 		>
 			<span

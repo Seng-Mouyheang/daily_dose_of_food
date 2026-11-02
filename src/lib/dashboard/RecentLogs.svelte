@@ -24,7 +24,7 @@
 			{#each recent as l (l.id)}
 				<li class="flex-1">
 					<a
-						href="/review/{l.id}"
+						href={l.href}
 						class="flex h-full min-h-11 items-center gap-3 rounded-input p-2 hover:bg-sunken"
 					>
 						<span

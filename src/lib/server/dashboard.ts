@@ -3,7 +3,7 @@
  * DashLog rows for dashboard/summary.ts. One batch: the review spine, its items (with type and
  * cuisine names), its rating rows, and each place's first-ever visit.
  */
-import { and, eq, gte, inArray, isNull, lt, min } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, min, sql } from 'drizzle-orm';
 import type { DashLog } from '#lib/dashboard/summary.ts';
 import { db } from './db/index.ts';
 import {
@@ -12,6 +12,7 @@ import {
 	drinkTypes,
 	foodItemDetails,
 	foodTypes,
+	logs as logRows,
 	places,
 	ratingCategories,
 	reviewCategoryRatings,
@@ -41,66 +42,164 @@ export const live = (userId: string) =>
 
 const localDate = (d: Date, tz: string) => d.toLocaleDateString('en-CA', { timeZone: tz });
 
+/** A place's key on the dashboard: its id, or for a place typed in a quick log (which has no
+ *  coordinates, so no row of its own) its name, case-insensitively. */
+export const placeKey = (placeId: string | null, name: string) =>
+	placeId ?? `name:${name.trim().toLowerCase()}`;
+
+/** A quick log as a dashboard entry: one item, paid tax included (as saved), with no sub-scores
+ *  since a log only has the overall rating. Opens the day in the Log, not a review page. */
+export function logToDashLog(r: {
+	id: string;
+	loggedOn: string;
+	title: string;
+	placeId: string | null;
+	placeName: string;
+	visitType: string;
+	mealType: string;
+	overallRating: number;
+	itemType: string;
+	price: string;
+	foodType: string | null;
+	drinkType: string | null;
+	cuisine: string | null;
+}): DashLog {
+	const drink = r.itemType === 'drink';
+	return {
+		id: r.id,
+		href: `/log?day=${r.loggedOn}`,
+		date: r.loggedOn,
+		title: r.title,
+		placeId: placeKey(r.placeId, r.placeName),
+		placeName: r.placeName,
+		visitType: r.visitType,
+		mealType: r.mealType,
+		overall: r.overallRating,
+		items: [
+			{
+				isDrink: drink,
+				kind: drink ? r.drinkType : r.foodType,
+				cuisine: drink ? null : r.cuisine,
+				price: toNumber(r.price) ?? 0
+			}
+		],
+		scores: { food: null, value: null, service: null, hygiene: null }
+	};
+}
+
+/** The earliest date seen for each place across several sources. */
+export function earliestByPlace(...sources: Iterable<readonly [string, string]>[]) {
+	const first = new Map<string, string>();
+	for (const source of sources)
+		for (const [place, date] of source) {
+			const cur = first.get(place);
+			if (cur === undefined || date < cur) first.set(place, date);
+		}
+	return first;
+}
+
 export async function getDashboardData(userId: string, from: Date, to: Date, tz: string) {
 	const inRange = and(live(userId), gte(reviews.visitedAt, from), lt(reviews.visitedAt, to));
 
-	const [spine, items, foodTypeRows, ratingRows, firstVisits] = await db.batch([
-		db
-			.select({
-				id: reviews.id,
-				visitedAt: reviews.visitedAt,
-				title: reviews.title,
-				placeId: places.id,
-				placeName: places.name,
-				visitType: reviews.visitType,
-				mealType: reviews.mealType,
-				overall: reviews.overallRating
-			})
-			.from(reviews)
-			.innerJoin(places, eq(reviews.placeId, places.id))
-			.where(inRange),
-		db
-			.select({
-				id: reviewItems.id,
-				reviewId: reviewItems.reviewId,
-				itemType: reviewItems.itemType,
-				itemName: reviewItems.itemName,
-				price: reviewItems.price,
-				taxPercent: reviewItems.taxPercent,
-				cuisineName: cuisineTypes.name,
-				drinkTypeName: drinkTypes.name
-			})
-			.from(reviewItems)
-			.innerJoin(reviews, eq(reviewItems.reviewId, reviews.id))
-			.leftJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
-			.leftJoin(cuisineTypes, eq(foodItemDetails.cuisineTypeId, cuisineTypes.id))
-			.leftJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
-			.leftJoin(drinkTypes, eq(drinkItemDetails.drinkTypeId, drinkTypes.id))
-			.where(inRange)
-			.orderBy(reviewItems.displayOrder),
-		db
-			.select({ reviewItemId: reviewItemFoodTypes.reviewItemId, name: foodTypes.name })
-			.from(reviewItemFoodTypes)
-			.innerJoin(reviewItems, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
-			.innerJoin(reviews, eq(reviewItems.reviewId, reviews.id))
-			.innerJoin(foodTypes, eq(reviewItemFoodTypes.foodTypeId, foodTypes.id))
-			.where(inRange),
-		db
-			.select({
-				reviewId: reviewCategoryRatings.reviewId,
-				slug: ratingCategories.slug,
-				value: reviewCategoryRatings.ratingValue
-			})
-			.from(reviewCategoryRatings)
-			.innerJoin(reviews, eq(reviewCategoryRatings.reviewId, reviews.id))
-			.innerJoin(ratingCategories, eq(reviewCategoryRatings.ratingCategoryId, ratingCategories.id))
-			.where(and(inRange, inArray(ratingCategories.slug, Object.values(SCORE_SLUGS).flat()))),
-		db
-			.select({ placeId: reviews.placeId, first: min(reviews.visitedAt) })
-			.from(reviews)
-			.where(live(userId))
-			.groupBy(reviews.placeId)
-	]);
+	// Quick logs in the same window, by local date. One that became a review is counted there.
+	const inLogRange = and(
+		eq(logRows.userId, userId),
+		isNull(logRows.reviewId),
+		gte(logRows.loggedOn, localDate(from, tz)),
+		lt(logRows.loggedOn, localDate(to, tz))
+	);
+	const logPlace = sql<string>`coalesce(${places.name}, ${logRows.placeName})`;
+	const logPlaceKey = sql<string>`coalesce(${logRows.placeId}::text, 'name:' || lower(btrim(${logRows.placeName})))`;
+
+	const [spine, items, foodTypeRows, ratingRows, firstVisits, logSpine, logFirsts] = await db.batch(
+		[
+			db
+				.select({
+					id: reviews.id,
+					visitedAt: reviews.visitedAt,
+					title: reviews.title,
+					placeId: places.id,
+					placeName: places.name,
+					visitType: reviews.visitType,
+					mealType: reviews.mealType,
+					overall: reviews.overallRating
+				})
+				.from(reviews)
+				.innerJoin(places, eq(reviews.placeId, places.id))
+				.where(inRange),
+			db
+				.select({
+					id: reviewItems.id,
+					reviewId: reviewItems.reviewId,
+					itemType: reviewItems.itemType,
+					itemName: reviewItems.itemName,
+					price: reviewItems.price,
+					taxPercent: reviewItems.taxPercent,
+					cuisineName: cuisineTypes.name,
+					drinkTypeName: drinkTypes.name
+				})
+				.from(reviewItems)
+				.innerJoin(reviews, eq(reviewItems.reviewId, reviews.id))
+				.leftJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
+				.leftJoin(cuisineTypes, eq(foodItemDetails.cuisineTypeId, cuisineTypes.id))
+				.leftJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
+				.leftJoin(drinkTypes, eq(drinkItemDetails.drinkTypeId, drinkTypes.id))
+				.where(inRange)
+				.orderBy(reviewItems.displayOrder),
+			db
+				.select({ reviewItemId: reviewItemFoodTypes.reviewItemId, name: foodTypes.name })
+				.from(reviewItemFoodTypes)
+				.innerJoin(reviewItems, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
+				.innerJoin(reviews, eq(reviewItems.reviewId, reviews.id))
+				.innerJoin(foodTypes, eq(reviewItemFoodTypes.foodTypeId, foodTypes.id))
+				.where(inRange),
+			db
+				.select({
+					reviewId: reviewCategoryRatings.reviewId,
+					slug: ratingCategories.slug,
+					value: reviewCategoryRatings.ratingValue
+				})
+				.from(reviewCategoryRatings)
+				.innerJoin(reviews, eq(reviewCategoryRatings.reviewId, reviews.id))
+				.innerJoin(
+					ratingCategories,
+					eq(reviewCategoryRatings.ratingCategoryId, ratingCategories.id)
+				)
+				.where(and(inRange, inArray(ratingCategories.slug, Object.values(SCORE_SLUGS).flat()))),
+			db
+				.select({ placeId: reviews.placeId, first: min(reviews.visitedAt) })
+				.from(reviews)
+				.where(live(userId))
+				.groupBy(reviews.placeId),
+			db
+				.select({
+					id: logRows.id,
+					loggedOn: logRows.loggedOn,
+					title: logRows.title,
+					placeId: logRows.placeId,
+					placeName: logPlace,
+					visitType: logRows.visitType,
+					mealType: logRows.mealType,
+					overallRating: logRows.overallRating,
+					itemType: logRows.itemType,
+					price: logRows.price,
+					foodType: foodTypes.name,
+					drinkType: drinkTypes.name,
+					cuisine: cuisineTypes.name
+				})
+				.from(logRows)
+				.leftJoin(places, eq(logRows.placeId, places.id))
+				.leftJoin(foodTypes, eq(logRows.foodTypeId, foodTypes.id))
+				.leftJoin(drinkTypes, eq(logRows.drinkTypeId, drinkTypes.id))
+				.leftJoin(cuisineTypes, eq(logRows.cuisineTypeId, cuisineTypes.id))
+				.where(inLogRange),
+			db
+				.select({ key: logPlaceKey, first: min(logRows.loggedOn) })
+				.from(logRows)
+				.where(and(eq(logRows.userId, userId), isNull(logRows.reviewId)))
+				.groupBy(logPlaceKey)
+		]
+	);
 
 	// An item can have several food types; the first is what the card shows, so it's the one
 	// the spend is filed under.
@@ -125,6 +224,7 @@ export async function getDashboardData(userId: string, from: Date, to: Date, tz:
 		};
 		return {
 			id: r.id,
+			href: `/review/${r.id}`,
 			date: localDate(r.visitedAt, tz),
 			title: r.title?.trim() || own.map((i) => i.itemName).join(' & ') || 'Untitled',
 			placeId: r.placeId,
@@ -147,12 +247,13 @@ export async function getDashboardData(userId: string, from: Date, to: Date, tz:
 		};
 	});
 
-	const firstVisitByPlace = new Map(
-		firstVisits.flatMap((f) => (f.first ? [[f.placeId, localDate(f.first, tz)] as const] : []))
+	const firstVisitByPlace = earliestByPlace(
+		firstVisits.flatMap((f) => (f.first ? [[f.placeId, localDate(f.first, tz)] as const] : [])),
+		logFirsts.flatMap((f) => (f.first ? [[f.key, f.first] as const] : []))
 	);
 	const firstLog = [...firstVisitByPlace.values()].sort()[0] ?? null;
 
-	return { logs, firstVisitByPlace, firstLog };
+	return { logs: [...logs, ...logSpine.map(logToDashLog)], firstVisitByPlace, firstLog };
 }
 
 export async function setMonthlyBudget(userId: string, budget: number | null) {

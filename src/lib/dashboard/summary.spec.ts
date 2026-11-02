@@ -6,6 +6,7 @@ let n = 0;
 function log(over: Partial<DashLog> = {}): DashLog {
 	return {
 		id: `r${++n}`,
+		href: `/review/r${n}`,
 		date: '2026-10-10',
 		title: 'Fish Amok',
 		placeId: 'malis',
