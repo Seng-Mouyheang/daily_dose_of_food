@@ -135,8 +135,7 @@
 		<p class="flex min-w-0 items-center gap-1.25 text-xs text-ink-2 lg:text-[13px]">
 			<Icon name="pin" size={14} class="text-ink-3" />
 			<span class="truncate"
-				>{view.placeName}{#if view.itemTypeLabel}
-					· {view.itemTypeLabel}{/if}</span
+				>{[view.placeName, view.itemTypeLabel].filter(Boolean).join(' · ')}</span
 			>
 		</p>
 
