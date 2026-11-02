@@ -138,8 +138,10 @@
 
 <svelte:head><title>Log · Daily Dose of Food</title></svelte:head>
 
+<!-- On desktop the page fits the screen and never scrolls itself: the calendar column and the
+     day's list each scroll inside their own column if they run long. On a phone the page scrolls. -->
 <main
-	class="mx-auto flex max-w-[1120px] flex-col gap-3.5 px-3.5 pt-4 pb-7 lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start lg:gap-[18px] lg:px-7 lg:pt-7 lg:pb-12"
+	class="mx-auto flex max-w-[1120px] flex-col gap-3.5 px-3.5 pt-4 pb-7 lg:grid lg:h-[calc(100dvh-4rem)] lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-[18px] lg:overflow-hidden lg:px-7 lg:pt-7 lg:pb-7"
 >
 	<header class="flex items-end justify-between gap-4 lg:col-span-2">
 		<div>
@@ -167,7 +169,7 @@
 		/>
 	</div>
 
-	<div class="hidden flex-col gap-[18px] lg:flex">
+	<div class="no-scrollbar hidden flex-col gap-[18px] lg:flex lg:min-h-0 lg:overflow-y-auto">
 		<section aria-label="Calendar" class="rounded-card border border-line bg-surface p-4">
 			<MonthCalendar
 				month={data.month}
@@ -186,7 +188,9 @@
 		/>
 	</div>
 
-	<div class="flex min-w-0 flex-col gap-3.5 lg:gap-[18px]">
+	<div
+		class="no-scrollbar flex min-w-0 flex-col gap-3.5 lg:min-h-0 lg:gap-[18px] lg:overflow-y-auto"
+	>
 		<div class="hidden min-h-11 items-center justify-between gap-3 px-0.5 lg:flex">
 			<div class="flex min-w-0 items-center gap-1">
 				<IconButton

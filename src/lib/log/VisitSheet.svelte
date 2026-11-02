@@ -99,7 +99,7 @@
 				</div>
 			</dl>
 
-			<div class="flex items-center gap-2 text-sm font-semibold">
+			<div class="mt-1.5 flex items-center gap-2 text-sm font-semibold">
 				<Stars value={visit.overall} size={17} />
 				<span class="tabular-nums">{visit.overall.toFixed(1)}</span>
 			</div>
@@ -120,7 +120,7 @@
 					type="button"
 					disabled={!onreview}
 					onclick={() => onreview?.(visit)}
-					class="inline-flex h-[46px] flex-1 items-center justify-center gap-2 rounded-input bg-sunken text-[15px] font-bold enabled:hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+					class="inline-flex h-[46px] flex-1 items-center justify-center gap-2 rounded-input bg-accent text-[15px] font-bold text-on-accent enabled:hover:brightness-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<Icon name="pencil" size={17} />Write a review
 				</button>
