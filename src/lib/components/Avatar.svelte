@@ -8,8 +8,16 @@
 		src = null,
 		name,
 		size = 40,
+		tone = 'accent',
 		class: extraClass = ''
-	}: { src?: string | null; name: string; size?: number; class?: string } = $props();
+	}: {
+		src?: string | null;
+		name: string;
+		size?: number;
+		/** The initial's disc: solid `accent` for the viewer, `soft` for anyone else (Explore). */
+		tone?: 'accent' | 'soft';
+		class?: string;
+	} = $props();
 
 	// Intl-safe: `name[0]` splits a surrogate pair (an emoji or an astral-plane script) into
 	// half a character, which renders as a replacement glyph. Falling back to '?' keeps a
@@ -31,7 +39,7 @@
 {:else}
 	<span
 		aria-hidden="true"
-		class={`flex shrink-0 items-center justify-center rounded-full bg-accent font-bold text-on-accent ${extraClass}`}
+		class={`flex shrink-0 items-center justify-center rounded-full font-bold ${tone === 'soft' ? 'bg-accent-soft text-accent-strong' : 'bg-accent text-on-accent'} ${extraClass}`}
 		style={`width: ${size}px; height: ${size}px; font-size: ${Math.round(size * 0.42)}px`}
 	>
 		{initial}
