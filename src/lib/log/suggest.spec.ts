@@ -19,6 +19,7 @@ const row = (over: Partial<HistoryRow> = {}): HistoryRow => ({
 	place: 'Brown Coffee',
 	qty: 1,
 	price: 2.75,
+	taxPercent: null,
 	...over
 });
 
@@ -88,6 +89,10 @@ describe('usualAt', () => {
 	it('divides a line total by its quantity', () => {
 		const r = usualAt([row({ qty: 2, price: 5.5 })], 'Brown Coffee');
 		expect(r[0]!.priceEach).toBe(2.75);
+	});
+	it('gives the price before tax, and the tax it carried', () => {
+		const r = usualAt([row({ qty: 2, price: 6.05, taxPercent: 10 })], 'Brown Coffee');
+		expect(r[0]).toMatchObject({ priceEach: 2.75, taxPercent: 10 });
 	});
 	it('is empty for an unknown place', () => expect(usualAt(history, 'Nowhere')).toEqual([]));
 	it('caps at five', () => {

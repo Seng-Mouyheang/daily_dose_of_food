@@ -66,4 +66,8 @@ describe('lineTotal', () => {
 		expect(lineTotal(2.75, 2)).toBe(5.5);
 		expect(lineTotal(0.1, 3)).toBe(0.3);
 	});
+	it('adds tax as a percentage', () => {
+		expect(lineTotal(2.75, 2, 10)).toBe(6.05);
+		expect(lineTotal(2.75, 2, 0)).toBe(5.5);
+	});
 });

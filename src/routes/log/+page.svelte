@@ -1,15 +1,20 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { goto, invalidateAll, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import Icon from '#lib/components/Icon.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import { toast } from '#lib/components/toast.svelte.ts';
 	import { addDays } from '#lib/dashboard/period.ts';
-	import { dayLabel, daySummary, logHref, monthSummary } from '#lib/log/day.ts';
+	import { dayLabel, daySummary, defaultMeal, logHref, monthSummary } from '#lib/log/day.ts';
 	import DayList from '#lib/log/DayList.svelte';
 	import DaySummary from '#lib/log/DaySummary.svelte';
 	import MonthCalendar from '#lib/log/MonthCalendar.svelte';
 	import MonthSheet from '#lib/log/MonthSheet.svelte';
 	import MonthSummary from '#lib/log/MonthSummary.svelte';
 	import WeekStrip from '#lib/log/WeekStrip.svelte';
-	import { groupVisits } from '#lib/log/visits.ts';
+	import LogVisitForm, { type Saved } from '#lib/log/LogVisitForm.svelte';
+	import { groupVisits, MEALS, visitKey, type MealType } from '#lib/log/visits.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -33,6 +38,71 @@
 	);
 	const isToday = $derived(data.day === data.today);
 	const loggedToday = $derived((data.counts[data.today] ?? 0) > 0);
+	// The Log a visit form. `id` makes each opening a fresh form; `notice` is what "Save and log
+	// another" just saved, shown inside the form because a modal covers the app's toast.
+	let formInit = $state<{
+		id: number;
+		date: string;
+		meal: MealType;
+		notice?: { text: string; undo: () => void };
+	} | null>(null);
+	let formCount = 0;
+	// The visit just saved, pulsed once in the list so you can see where it landed.
+	let flash = $state<string | null>(null);
+
+	function openForm(meal?: MealType, notice?: { text: string; undo: () => void }, date = data.day) {
+		formInit = {
+			id: ++formCount,
+			date,
+			meal: meal ?? defaultMeal(visits.map((v) => v.meal)),
+			notice
+		};
+	}
+
+	// The + button's chooser links here as /log?add (or ?add=lunch): open the form, then tidy the URL.
+	$effect(() => {
+		const add = page.url.searchParams.get('add');
+		if (add === null) return;
+		untrack(() => openForm(MEALS.find((m) => m === add)));
+		const clean = new URL(page.url.href);
+		clean.searchParams.delete('add');
+		replaceState(clean, {});
+	});
+
+	async function undoSave(ids: string[]) {
+		await fetch('/api/log', {
+			method: 'DELETE',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ ids })
+		});
+		await invalidateAll();
+	}
+
+	async function onsaved(s: Saved, another: boolean) {
+		const text = `Logged ${s.count} ${s.count === 1 ? 'item' : 'items'} at ${s.place}`;
+		const undo = () => undoSave(s.ids);
+		if (another) {
+			// A fresh form on the same date and meal; Undo takes this save back and drops the notice.
+			const notice = {
+				text,
+				undo: () => {
+					void undo();
+					if (formInit) formInit = { ...formInit, notice: undefined };
+				}
+			};
+			openForm(s.meal, notice, s.date);
+		} else {
+			formInit = null;
+			toast.show(text, undo);
+		}
+		const key = visitKey({ ...s, reviewId: null });
+		await goto(logHref(s.date, data.today), { invalidateAll: true });
+		flash = key;
+		setTimeout(() => {
+			if (flash === key) flash = null;
+		}, 2600);
+	}
+
 	const prevDay = $derived(data.day > data.first ? addDays(data.day, -1) : null);
 	const nextDay = $derived(isToday ? null : addDays(data.day, 1));
 </script>
@@ -51,8 +121,8 @@
 		</div>
 		<button
 			type="button"
-			disabled
-			class="hidden h-11 items-center gap-1.5 rounded-input bg-accent px-4 text-sm font-bold text-on-accent disabled:cursor-not-allowed disabled:opacity-50 lg:inline-flex"
+			onclick={() => openForm()}
+			class="hidden h-11 items-center gap-1.5 rounded-input bg-accent px-4 text-sm font-bold text-on-accent hover:brightness-90 lg:inline-flex"
 		>
 			<Icon name="plus" size={16} weight={2.4} />Log a visit
 		</button>
@@ -128,7 +198,7 @@
 				showStreak={isToday}
 			/>
 		{/if}
-		<DayList {visits} {isToday} />
+		<DayList {visits} {isToday} {flash} onadd={openForm} />
 	</div>
 </main>
 
@@ -147,3 +217,16 @@
 		>Go to today</a
 	>
 </MonthSheet>
+
+{#if formInit}
+	{#key formInit.id}
+		<LogVisitForm
+			date={formInit.date}
+			meal={formInit.meal}
+			today={data.today}
+			notice={formInit.notice}
+			onclose={() => (formInit = null)}
+			{onsaved}
+		/>
+	{/key}
+{/if}

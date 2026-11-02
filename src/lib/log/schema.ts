@@ -3,7 +3,8 @@ import { DINING_OPTIONS, MEALS } from './visits.ts';
 
 /**
  * Shared between the Log a visit form (step validation) and the save action (authoritative).
- * The form sends the price of one item; the server stores the line total (price × qty).
+ * The form sends the price of one item before tax; the server stores the line total paid
+ * (price × qty, plus tax).
  */
 
 const lookupId = z.number().int().positive().nullable().default(null);
@@ -15,8 +16,11 @@ export const logItemSchema = z.object({
 	drinkTypeId: lookupId,
 	cuisineTypeId: lookupId,
 	qty: z.number().int().min(1).max(99),
-	/** Price of one item */
-	price: z.number().nonnegative().max(1_000_000)
+	/** Price of one item, before tax */
+	price: z.number().nonnegative().max(1_000_000),
+	/** Tax as a percentage, e.g. 10 for 10%; the bill's rate, the same on every item */
+	taxPercent: z.number().min(0).max(999).nullable().default(null),
+	isFavorite: z.boolean().default(false)
 });
 
 /** A place already in the app, or just a name: places need coordinates, which the quick log

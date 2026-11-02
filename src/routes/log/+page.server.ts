@@ -1,11 +1,12 @@
-import { redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { todayIn } from '#lib/dashboard/period.ts';
 import { dailyBudget, parseLogQuery, streak } from '#lib/log/day.ts';
-import { getOrSyncUser } from '#lib/server/auth.ts';
+import { logVisitSchema } from '#lib/log/schema.ts';
+import { getOrSyncUser, requireUser } from '#lib/server/auth.ts';
 import { toNumber } from '#lib/server/feed.ts';
-import { getDayCounts, getLogMonth } from '#lib/server/logs.ts';
+import { createLogs, getDayCounts, getLogMonth } from '#lib/server/logs.ts';
 import { userTimeZone } from '#lib/server/timezone.ts';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 	const user = await getOrSyncUser(locals);
@@ -32,4 +33,36 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 		streak: streak(counts, today),
 		dailyBudget: dailyBudget(toNumber(user.monthlyBudget))
 	};
+};
+
+export const actions: Actions = {
+	/** Saves one visit: a log per item. The form posts it as JSON, checked here again. */
+	save: async ({ locals, request, cookies }) => {
+		const user = await requireUser(locals);
+
+		let json: unknown;
+		try {
+			json = JSON.parse(String((await request.formData()).get('payload') ?? 'null'));
+		} catch {
+			return fail(400, { message: 'Malformed submission.' });
+		}
+		const parsed = logVisitSchema(todayIn(userTimeZone(cookies))).safeParse(json);
+		if (!parsed.success) {
+			return fail(400, {
+				message: parsed.error.issues[0]?.message ?? 'Check the form and try again.'
+			});
+		}
+
+		const v = parsed.data;
+		const ids = await createLogs(user.id, v);
+		return {
+			saved: {
+				ids,
+				date: v.date,
+				meal: v.meal,
+				dining: v.dining,
+				count: v.items.reduce((n, i) => n + i.qty, 0)
+			}
+		};
+	}
 };

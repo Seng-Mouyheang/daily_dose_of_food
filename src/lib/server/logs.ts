@@ -217,7 +217,9 @@ export async function createLogs(userId: string, visit: LogVisitInput): Promise<
 					drinkTypeId: food ? null : i.drinkTypeId,
 					cuisineTypeId: food ? i.cuisineTypeId : null,
 					qty: i.qty,
-					price: lineTotal(i.price, i.qty).toFixed(2),
+					price: lineTotal(i.price, i.qty, i.taxPercent ?? 0).toFixed(2),
+					taxPercent: i.taxPercent === null ? null : i.taxPercent.toFixed(2),
+					isFavorite: i.isFavorite,
 					mealType: visit.meal,
 					visitType: visit.dining,
 					overallRating: visit.overall,
@@ -262,7 +264,8 @@ export async function getItemHistory(userId: string, limit = 500): Promise<Histo
 			cuisine: cuisineTypes.name,
 			place: placeName,
 			qty: logs.qty,
-			price: logs.price
+			price: logs.price,
+			taxPercent: logs.taxPercent
 		})
 		.from(logs)
 		.leftJoin(places, eq(logs.placeId, places.id))
@@ -282,7 +285,8 @@ export async function getItemHistory(userId: string, limit = 500): Promise<Histo
 		cuisine: r.cuisine,
 		place: r.place,
 		qty: r.qty,
-		price: toNumber(r.price) ?? 0
+		price: toNumber(r.price) ?? 0,
+		taxPercent: toNumber(r.taxPercent)
 	}));
 }
 

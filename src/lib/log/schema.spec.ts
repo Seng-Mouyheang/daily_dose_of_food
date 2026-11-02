@@ -19,7 +19,13 @@ describe('logVisitSchema', () => {
 	it('accepts a visit and fills defaults', () => {
 		const r = schema.parse(valid);
 		expect(r.note).toBeNull();
-		expect(r.items[0]).toMatchObject({ foodTypeId: null, drinkTypeId: null, cuisineTypeId: null });
+		expect(r.items[0]).toMatchObject({
+			foodTypeId: null,
+			drinkTypeId: null,
+			cuisineTypeId: null,
+			taxPercent: null,
+			isFavorite: false
+		});
 	});
 	it('turns a blank note into null and trims', () => {
 		expect(schema.parse({ ...valid, note: '   ' }).note).toBeNull();
@@ -41,6 +47,14 @@ describe('logVisitSchema', () => {
 		fails({ items: [{ ...valid.items[0], qty: 0 }] });
 		fails({ items: [{ ...valid.items[0], price: -1 }] });
 		fails({ items: [{ ...valid.items[0], title: ' ' }] });
+	});
+	it('accepts a tax percentage but not a negative one', () => {
+		const item = { ...valid.items[0], taxPercent: 10, isFavorite: true };
+		expect(schema.parse({ ...valid, items: [item] }).items[0]).toMatchObject({
+			taxPercent: 10,
+			isFavorite: true
+		});
+		fails({ items: [{ ...item, taxPercent: -1 }] });
 	});
 	it('needs a whole-star rating from 1 to 5', () => {
 		fails({ overall: 0 });

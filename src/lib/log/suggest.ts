@@ -29,13 +29,16 @@ export interface HistoryRow {
 	cuisine: string | null;
 	place: string;
 	qty: number;
-	/** Line total paid */
+	/** Line total paid, tax included */
 	price: number;
+	taxPercent: number | null;
 }
 
 export interface ItemSuggestion extends Omit<HistoryRow, 'place' | 'qty' | 'price'> {
-	/** Price of one, as last paid */
+	/** Price of one before tax, as last paid */
 	priceEach: number;
+	/** The tax it carried, so a reused price isn't taxed twice */
+	taxPercent: number | null;
 	uses: number;
 }
 
@@ -85,7 +88,8 @@ function group(rows: HistoryRow[]): ItemSuggestion[] {
 				cuisineTypeId,
 				kind,
 				cuisine,
-				priceEach: Math.round((r.price / r.qty) * 100) / 100,
+				priceEach: Math.round((r.price / r.qty / (1 + (r.taxPercent ?? 0) / 100)) * 100) / 100,
+				taxPercent: r.taxPercent,
 				uses: 1
 			});
 		}

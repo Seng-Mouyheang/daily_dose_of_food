@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+	boolean,
 	check,
 	date,
 	index,
@@ -37,8 +38,12 @@ export const logs = pgTable(
 		drinkTypeId: smallint('drink_type_id').references(() => drinkTypes.id),
 		cuisineTypeId: smallint('cuisine_type_id').references(() => cuisineTypes.id),
 		qty: integer('qty').notNull().default(1),
-		/** Line total paid: price each × qty */
+		/** Line total paid, tax included: price each × qty × (1 + tax ÷ 100) */
 		price: numeric('price', { precision: 12, scale: 2 }).notNull(),
+		/** Tax as a percentage, e.g. 10 for 10%; kept so the price can be split again later */
+		taxPercent: numeric('tax_percent', { precision: 5, scale: 2 }),
+		/** A dish or drink you loved */
+		isFavorite: boolean('is_favorite').notNull().default(false),
 		mealType: varchar('meal_type', { length: 20 }).notNull(),
 		visitType: varchar('visit_type', { length: 20 }).notNull(),
 		overallRating: smallint('overall_rating').notNull(),
@@ -57,6 +62,7 @@ export const logs = pgTable(
 		check('chk_log_item_type', sql`${t.itemType} IN ('food', 'drink')`),
 		check('chk_log_qty', sql`${t.qty} >= 1`),
 		check('chk_log_price', sql`${t.price} >= 0`),
+		check('chk_log_tax', sql`${t.taxPercent} IS NULL OR ${t.taxPercent} >= 0`),
 		check('chk_log_rating', sql`${t.overallRating} BETWEEN 1 AND 5`),
 		check('chk_log_meal_type', sql`${t.mealType} IN ('breakfast', 'lunch', 'dinner', 'snack')`),
 		check('chk_log_visit_type', sql`${t.visitType} IN ('dine_in', 'takeaway', 'delivery')`)

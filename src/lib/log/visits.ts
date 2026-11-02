@@ -46,8 +46,9 @@ export interface Visit {
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 
-/** Price paid for one line: price each × qty, to the cent. */
-export const lineTotal = (priceEach: number, qty: number) => cents(priceEach * qty);
+/** Price paid for one line: price each × qty, plus tax (a percentage), to the cent. */
+export const lineTotal = (priceEach: number, qty: number, taxPercent = 0) =>
+	cents(priceEach * qty * (1 + taxPercent / 100));
 
 export const visitKey = (l: Pick<LogEntry, 'date' | 'meal' | 'place' | 'dining' | 'reviewId'>) =>
 	[l.date, l.meal, l.place, l.dining, l.reviewId ?? ''].join('|');
