@@ -21,6 +21,8 @@ export const ICONS = {
 	bike: '<circle cx="5.5" cy="17" r="3"/><circle cx="18.5" cy="17" r="3"/><path d="M5.5 17l4-8h5l4 8M9.5 9H7M14.5 9l-1-3h-2"/>',
 	cup: '<path d="M6 8h12l-1.4 12.2A2 2 0 0 1 14.6 22H9.4a2 2 0 0 1-2-1.8L6 8zM5 5h14v3H5zM12 2v3"/>',
 	plate: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/>',
+	cake: '<path d="M4 21h16M5 21v-7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v7M5 16.5c1.5 1 3 1 4.5 0s3-1 4.5 0 3 1 5 0M12 13V9.5"/><path d="M12 7a1.3 1.3 0 0 1-1.3-1.3C10.7 4.5 12 3 12 3s1.3 1.5 1.3 2.7A1.3 1.3 0 0 1 12 7z"/>',
+	bowl: '<path d="M3 11h18a9 8 0 0 1-18 0zM9 21h6M14 8l6-5M16.5 9l5-3.5"/>',
 	coffee:
 		'<path d="M4 8h13v5a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6V8zM17 9h1.5a2.5 2.5 0 0 1 0 5H17M8 2.5v3M12 2.5v3"/>',
 	both: '<circle cx="9" cy="13" r="6"/><circle cx="9" cy="13" r="2.5"/><path d="M16 6h5l-.8 12.5a1.5 1.5 0 0 1-1.5 1.5H17"/>',

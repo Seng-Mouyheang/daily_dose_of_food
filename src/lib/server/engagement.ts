@@ -1,5 +1,5 @@
 /**
- * The engagement write path: likes, saves and comments. The read side (counts, the viewer's own likes,
+ * The engagement write path: likes, saves, follows and comments. The read side (counts, the viewer's own likes,
  * the comment list) lives in feed.ts next to the queries it has to stay consistent with.
  *
  * Nothing here checks whether the caller may see the review — that is the route's job, via
@@ -9,11 +9,13 @@
 import { and, count, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { db } from './db/index.ts';
 import {
+	follows,
 	mediaFiles,
 	reviewCommentLikes,
 	reviewComments,
 	reviewLikes,
-	reviewSaves
+	reviewSaves,
+	users
 } from './db/schema/index.ts';
 
 /** Idempotent: the composite primary key turns a repeated like (double-click, retry, a second
@@ -37,6 +39,28 @@ export async function unsaveReview(reviewId: string, userId: string): Promise<vo
 	await db
 		.delete(reviewSaves)
 		.where(and(eq(reviewSaves.reviewId, reviewId), eq(reviewSaves.userId, userId)));
+}
+
+/** Idempotent for the same reason as likeReview. The caller rules out following yourself first
+ *  (the table's check constraint would otherwise turn it into a 500). */
+export async function followUser(followerId: string, followeeId: string): Promise<void> {
+	await db.insert(follows).values({ followerId, followeeId }).onConflictDoNothing();
+}
+
+export async function unfollowUser(followerId: string, followeeId: string): Promise<void> {
+	await db
+		.delete(follows)
+		.where(and(eq(follows.followerId, followerId), eq(follows.followeeId, followeeId)));
+}
+
+/** Whether `userId` is someone who can be followed: a live account. */
+export async function userExists(userId: string): Promise<boolean> {
+	const [row] = await db
+		.select({ id: users.id })
+		.from(users)
+		.where(and(eq(users.id, userId), isNull(users.deletedAt)))
+		.limit(1);
+	return row !== undefined;
 }
 
 export async function countLikes(reviewId: string): Promise<number> {

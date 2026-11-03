@@ -18,6 +18,7 @@
 	--surface: #ffffff;
 	--sunken: #f4eee4;
 	--line: #e7ded0;
+	--line-2: #dcd0be;
 	--ink: #2a2019;
 	--ink-2: #6a5b4e;
 	--ink-3: #9b8c7d;
@@ -59,6 +60,7 @@
 	--surface: #211a14;
 	--sunken: #2a221b;
 	--line: #3a3027;
+	--line-2: #4a3d31;
 	--ink: #f4ece1;
 	--ink-2: #c6b7a6;
 	--ink-3: #8f8172;
@@ -88,6 +90,7 @@
 		--surface: #211a14;
 		--sunken: #2a221b;
 		--line: #3a3027;
+		--line-2: #4a3d31;
 		--ink: #f4ece1;
 		--ink-2: #c6b7a6;
 		--ink-3: #8f8172;
@@ -133,6 +136,7 @@
 	--color-surface: var(--surface);
 	--color-sunken: var(--sunken);
 	--color-line: var(--line);
+	--color-line-2: var(--line-2);
 	--color-ink: var(--ink);
 	--color-ink-2: var(--ink-2);
 	--color-ink-3: var(--ink-3);
@@ -232,4 +236,62 @@ body {
 		margin-top: 0;
 		margin-bottom: 4px;
 	}
+}
+
+/* A bottom sheet: a native <dialog> (opened with showModal) whose one child slides up over a
+ * dimmed backdrop. Shared by ActionSheet, MonthSheet, VisitSheet and Explore's FilterSheet.
+ * `.sheet-fade-lg` is for a sheet that becomes a centered dialog on desktop: it fades in there
+ * instead of sliding up from the bottom edge. */
+.sheet::backdrop {
+	background: var(--scrim);
+}
+.sheet[open] > div {
+	animation: sheet-up 0.22s ease;
+}
+@keyframes sheet-up {
+	from {
+		transform: translateY(100%);
+	}
+}
+@media (min-width: 1024px) {
+	.sheet-fade-lg[open] > div {
+		animation-name: sheet-fade;
+	}
+}
+@keyframes sheet-fade {
+	from {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.sheet[open] > div {
+		animation: none;
+	}
+}
+
+/* A 44×44 tap area (DESIGN.md §7) for a control drawn smaller, like a 30px filter pill: at least
+ * 44px wide as drawn, plus an invisible ::before 44px tall centered on it, that doesn't touch
+ * layout. The area never sticks out sideways, so it can't cover a neighbor in a row. It sticks out
+ * 7–8px above and below, so wrapped rows of these need a row gap of at least 8px (`gap-y-2`) to
+ * keep it off the next line's pills (two areas may share the gap; the nearer pill wins). A row
+ * that scrolls sideways needs `tap-row` so it doesn't clip it. */
+@utility tap-target {
+	position: relative;
+	min-width: 44px;
+
+	&::before {
+		content: '';
+		position: absolute;
+		inset-inline: 0;
+		top: 50%;
+		height: max(100%, 44px);
+		translate: 0 -50%;
+	}
+}
+
+/* A row that scrolls sideways clips anything sticking out of it, `tap-target` areas included:
+ * 8px of padding above and below keeps them, and the matching negative margin keeps the layout. */
+@utility tap-row {
+	padding-block: 8px;
+	margin-block: -8px;
 }

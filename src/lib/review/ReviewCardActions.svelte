@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import Icon from '#lib/components/Icon.svelte';
 	import IconButton from '#lib/components/IconButton.svelte';
+	import { createLike, createSave } from './engagement.svelte.ts';
 	import { formatCount } from './format.ts';
 
 	/** Like / comments / save / share, as the handoff draws them.
@@ -12,8 +12,7 @@
 	 *  Share needs no server: a small menu of copy-link and share-intent links, plus the native
 	 *  share sheet as "More…" on devices that have one.
 	 *
-	 *  Like and save are optimistic: they flip immediately, then snap to whatever the server says
-	 *  it settled on, and roll back if the request fails. Every control that must stay
+	 *  Like and save are optimistic (see engagement.svelte.ts). Every control that must stay
 	 *  clickable above a card's stretched link is lifted with `relative z-10`. */
 	let {
 		reviewId = null,
@@ -41,88 +40,8 @@
 	// by anything here) would otherwise fight over one `anchor-name` and one popover `id`.
 	const uid = $props.id();
 
-	/** The shape behind both the heart and the bookmark: PUT/DELETE depending on `on`, then
-	 *  either apply whatever the server settled on or roll back. `flip` and `rollback` own the
-	 *  optimistic state themselves — a like also carries a count, a save doesn't — so this stays
-	 *  agnostic to what's being toggled. The hover-preloaded review page
-	 *  (data-sveltekit-preload-data) was fetched before this write and would be reused on click,
-	 *  showing the old state until a refresh; the invalidation discards that preload (no load
-	 *  depends on this key, so nothing re-runs). */
-	async function toggleEngagement<Settled>(
-		endpoint: string,
-		on: boolean,
-		applySettled: (body: Settled | null) => void,
-		rollback: () => void
-	): Promise<void> {
-		try {
-			const res = await fetch(endpoint, { method: on ? 'PUT' : 'DELETE' });
-			if (!res.ok) throw new Error(String(res.status));
-			applySettled(await res.json().catch(() => null));
-			void invalidate('app:review-engagement');
-		} catch {
-			rollback();
-		}
-	}
-
-	// Writable $derived: follows the props, but can be assigned to for the optimistic update. It
-	// snaps back to the props when the parent hands over fresh data (a navigation, an
-	// invalidation), and — unlike an $effect-seeded $state — is correct on the first render.
-	let isLiked = $derived(liked);
-	let count = $derived(likeCount);
-	let pending = $state(false);
-	// True only while the pop plays, and only set by a click that *adds* a like — so a card that
-	// loads already liked, or an unlike, doesn't animate.
-	let popping = $state(false);
-
-	async function toggleLike() {
-		if (!reviewId || pending) return;
-		pending = true;
-		const before = { isLiked, count };
-		isLiked = !before.isLiked;
-		popping = isLiked;
-		count = Math.max(0, before.count + (isLiked ? 1 : -1));
-
-		await toggleEngagement<{ liked: boolean; likeCount: number }>(
-			`/api/reviews/${reviewId}/like`,
-			isLiked,
-			(settled) => {
-				if (settled) {
-					isLiked = settled.liked;
-					count = settled.likeCount;
-				}
-			},
-			() => {
-				isLiked = before.isLiked;
-				count = before.count;
-			}
-		);
-		pending = false;
-	}
-
-	let isSaved = $derived(saved);
-	let savePending = $state(false);
-	// Same rule as the heart's popping: only a click that *adds* a save plays the animation.
-	let savePopping = $state(false);
-
-	async function toggleSave() {
-		if (!reviewId || savePending) return;
-		savePending = true;
-		const before = isSaved;
-		isSaved = !before;
-		savePopping = isSaved;
-
-		await toggleEngagement<{ saved: boolean }>(
-			`/api/reviews/${reviewId}/save`,
-			isSaved,
-			(settled) => {
-				if (settled) isSaved = settled.saved;
-			},
-			() => {
-				isSaved = before;
-			}
-		);
-		savePending = false;
-	}
+	const like = createLike(() => ({ reviewId, liked, count: likeCount }));
+	const save = createSave(() => ({ reviewId, saved }));
 
 	let copied = $state(false);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -187,24 +106,28 @@
 	{:else if canLike}
 		<button
 			type="button"
-			class={`${buttonClass} ${isLiked ? 'text-fav' : 'text-ink-2 hover:text-ink'}`}
-			aria-pressed={isLiked}
-			aria-label={`Like, ${count} ${count === 1 ? 'like' : 'likes'}`}
-			onclick={toggleLike}
+			class={`${buttonClass} ${like.liked ? 'text-fav' : 'text-ink-2 hover:text-ink'}`}
+			aria-pressed={like.liked}
+			aria-label={`Like, ${like.count} ${like.count === 1 ? 'like' : 'likes'}`}
+			onclick={like.toggle}
 		>
-			<span class="inline-flex" class:pop={popping} onanimationend={() => (popping = false)}>
-				<Icon name="heart" filled={isLiked} />
+			<span
+				class="inline-flex"
+				class:pop={like.popping}
+				onanimationend={() => (like.popping = false)}
+			>
+				<Icon name="heart" filled={like.liked} />
 			</span>
-			{#if count > 0}<span>{formatCount(count)}</span>{/if}
+			{#if like.count > 0}<span>{formatCount(like.count)}</span>{/if}
 		</button>
 	{:else}
 		<a
 			href="/sign-in"
 			class={`${buttonClass} text-ink-2 hover:text-ink`}
-			aria-label={`Sign in to like, ${count} ${count === 1 ? 'like' : 'likes'}`}
+			aria-label={`Sign in to like, ${like.count} ${like.count === 1 ? 'like' : 'likes'}`}
 		>
 			<Icon name="heart" />
-			{#if count > 0}<span>{formatCount(count)}</span>{/if}
+			{#if like.count > 0}<span>{formatCount(like.count)}</span>{/if}
 		</a>
 	{/if}
 
@@ -228,17 +151,17 @@
 		{#if canLike}
 			<button
 				type="button"
-				class={`${buttonClass} ${isSaved ? 'text-accent' : 'text-ink-2 hover:text-ink'}`}
-				aria-pressed={isSaved}
-				aria-label={isSaved ? 'Saved' : 'Save'}
-				onclick={toggleSave}
+				class={`${buttonClass} ${save.on ? 'text-accent' : 'text-ink-2 hover:text-ink'}`}
+				aria-pressed={save.on}
+				aria-label={save.on ? 'Saved' : 'Save'}
+				onclick={save.toggle}
 			>
 				<span
 					class="inline-flex"
-					class:pop={savePopping}
-					onanimationend={() => (savePopping = false)}
+					class:pop={save.popping}
+					onanimationend={() => (save.popping = false)}
 				>
-					<Icon name="bookmark" filled={isSaved} />
+					<Icon name="bookmark" filled={save.on} />
 				</span>
 			</button>
 		{:else}

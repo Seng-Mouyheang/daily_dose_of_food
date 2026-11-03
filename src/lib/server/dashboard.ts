@@ -3,7 +3,7 @@
  * DashLog rows for dashboard/summary.ts. One batch: the review spine, its items (with type and
  * cuisine names), its rating rows, and each place's first-ever visit.
  */
-import { and, eq, gte, inArray, isNull, lt, min, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, min, notExists, sql } from 'drizzle-orm';
 import type { DashLog } from '#lib/dashboard/summary.ts';
 import { db } from './db/index.ts';
 import {
@@ -38,6 +38,17 @@ export const live = (userId: string) =>
 		eq(reviews.reviewStatus, 'published'),
 		isNull(reviews.deletedAt),
 		isNull(reviews.archivedAt)
+	);
+
+/** The viewer's logs that stand on their own: not published as a review, or published as one
+ *  that is archived or deleted (which `live` drops). The one rule for "is this log its own
+ *  entry", so the Log, the dashboard and writing a review from a visit always agree. */
+export const standaloneLog = (userId: string) =>
+	notExists(
+		db
+			.select({ one: sql`1` })
+			.from(reviews)
+			.where(and(eq(reviews.id, logRows.reviewId), live(userId)))
 	);
 
 const localDate = (d: Date, tz: string) => d.toLocaleDateString('en-CA', { timeZone: tz });
@@ -101,10 +112,10 @@ export function earliestByPlace(...sources: Iterable<readonly [string, string]>[
 export async function getDashboardData(userId: string, from: Date, to: Date, tz: string) {
 	const inRange = and(live(userId), gte(reviews.visitedAt, from), lt(reviews.visitedAt, to));
 
-	// Quick logs in the same window, by local date. One that became a review is counted there.
+	// Quick logs in the same window, by local date. One that became a live review is counted there.
 	const inLogRange = and(
 		eq(logRows.userId, userId),
-		isNull(logRows.reviewId),
+		standaloneLog(userId),
 		gte(logRows.loggedOn, localDate(from, tz)),
 		lt(logRows.loggedOn, localDate(to, tz))
 	);
@@ -196,7 +207,7 @@ export async function getDashboardData(userId: string, from: Date, to: Date, tz:
 			db
 				.select({ key: logPlaceKey, first: min(logRows.loggedOn) })
 				.from(logRows)
-				.where(and(eq(logRows.userId, userId), isNull(logRows.reviewId)))
+				.where(and(eq(logRows.userId, userId), standaloneLog(userId)))
 				.groupBy(logPlaceKey)
 		]
 	);

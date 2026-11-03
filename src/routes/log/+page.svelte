@@ -216,7 +216,7 @@
 			{#if !isToday}
 				<a
 					href={logHref(data.today, data.today)}
-					class="border-line-2 inline-flex h-[34px] flex-none items-center rounded-input border px-3 text-[13.5px] font-semibold text-ink-2 hover:border-ink-3 hover:text-ink"
+					class="inline-flex h-[34px] flex-none items-center rounded-input border border-line-2 px-3 text-[13.5px] font-semibold text-ink-2 hover:border-ink-3 hover:text-ink"
 					>Back to today</a
 				>
 			{/if}

@@ -9,6 +9,7 @@
 	import { MEAL_LABEL } from '#lib/review/card.ts';
 	import { ratingWord } from '#lib/review/format.ts';
 	import { priceOf, type LogForm } from './form.svelte.ts';
+	import { MAX_QTY } from './schema.ts';
 	import { lineTotal, MEALS } from './visits.ts';
 
 	/** Step 2, "How was it?": meal, how you had it, what you paid, a rating that counts in your
@@ -126,9 +127,10 @@
 								<b class="min-w-6 text-center text-sm font-semibold tabular-nums">{item.qty}</b>
 								<button
 									type="button"
+									disabled={item.qty >= MAX_QTY}
 									onclick={() => item.qty++}
 									aria-label="One more"
-									class="grid h-11 w-10 place-items-center rounded-input text-ink-2 hover:text-ink"
+									class="grid h-11 w-10 place-items-center rounded-input text-ink-2 enabled:hover:text-ink disabled:opacity-35"
 									><Icon name="plus" size={15} weight={2.2} /></button
 								>
 							</div>
@@ -188,7 +190,7 @@
 								class="group flex min-h-9 items-center gap-2.5 text-[13.5px] font-medium text-ink-3 transition-colors hover:text-ink"
 							>
 								<span
-									class="border-line-2 grid h-6 w-6 place-items-center rounded-[8px] border border-dashed transition-colors group-hover:border-ink-2"
+									class="grid h-6 w-6 place-items-center rounded-[8px] border border-dashed border-line-2 transition-colors group-hover:border-ink-2"
 								>
 									<Icon name="plus" size={14} weight={2} />
 								</span>

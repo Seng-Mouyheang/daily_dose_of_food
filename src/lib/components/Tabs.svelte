@@ -11,12 +11,15 @@
 		options,
 		current,
 		ariaLabel,
+		plainCounts = false,
 		onselect
 	}: {
 		/** `count` adds a badge after the label (the journal's "My reviews 12"). */
 		options: { value: string; label: string; href: string; count?: number }[];
 		current: string;
 		ariaLabel: string;
+		/** Counts as plain grey numbers rather than badges (Explore's "Food 12"). */
+		plainCounts?: boolean;
 		/** Takes over a plain click (the journal switches tabs from data it already has).
 		 *  Modified clicks still open the link normally. */
 		onselect?: (value: string, href: string) => void;
@@ -41,9 +44,11 @@
 			{option.label}
 			{#if option.count !== undefined}
 				<span
-					class={`ml-1.5 rounded-full px-[7px] py-px text-xs font-bold tabular-nums ${
-						isCurrent ? 'bg-accent-soft text-accent-strong' : 'bg-sunken text-ink-2'
-					}`}>{option.count}</span
+					class={plainCounts
+						? 'ml-1 text-[13px] font-semibold text-ink-3 tabular-nums'
+						: `ml-1.5 rounded-full px-[7px] py-px text-xs font-bold tabular-nums ${
+								isCurrent ? 'bg-accent-soft text-accent-strong' : 'bg-sunken text-ink-2'
+							}`}>{option.count}</span
 				>
 			{/if}
 		</a>

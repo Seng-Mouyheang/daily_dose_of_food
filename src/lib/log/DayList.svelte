@@ -38,7 +38,7 @@
 	>
 		<span class="grid w-10 flex-none place-items-center">
 			<span
-				class="border-line-2 grid h-7 w-7 place-items-center rounded-[9px] border border-dashed"
+				class="grid h-7 w-7 place-items-center rounded-[9px] border border-dashed border-line-2"
 			>
 				<Icon name="plus" size={15} weight={2} />
 			</span>

@@ -1,0 +1,178 @@
+import { expect, test, type Page } from '@playwright/test';
+
+/** Signed out, which is all this suite can be (no Clerk auth fixture) and also the case Explore
+ *  exists for: it is the public front window. Every load queries the database, so the file
+ *  skips without one; CI's test database may be empty, so the card tests skip themselves when
+ *  there is nothing to click. */
+test.beforeEach(() => {
+	test.skip(process.env.E2E_DATABASE_AVAILABLE !== 'true', 'needs a reachable test database');
+});
+
+const filters = (page: Page) => page.getByRole('navigation', { name: 'Filter' });
+
+const selected = (page: Page) => filters(page).locator('[aria-current="true"]');
+
+test('signed out, Explore shows the grid with no filter on', async ({ page }) => {
+	const response = await page.goto('/explore');
+	expect(response?.status()).toBe(200);
+	await expect(page.getByRole('heading', { level: 1, name: 'Explore' })).toBeVisible();
+	await expect(selected(page)).toHaveCount(0);
+	await expect(
+		page
+			.getByRole('link', { name: /^Open review:/ })
+			.first()
+			.or(page.getByText('No public reviews yet.'))
+	).toBeVisible();
+});
+
+test('quick chips combine in the URL and toggle off again', async ({ page }) => {
+	await page.goto('/explore');
+	await filters(page).getByRole('link', { name: 'Desserts' }).click();
+	await expect(page).toHaveURL(/\/explore\?kind=dessert$/);
+	await filters(page).getByRole('link', { name: 'Breakfast' }).click();
+	await expect(page).toHaveURL(/\/explore\?meal=breakfast&kind=dessert$/);
+	await expect(selected(page)).toHaveText(['Breakfast', 'Desserts']);
+	await expect(
+		page
+			.getByRole('link', { name: /^Open review:/ })
+			.first()
+			.or(page.getByText('No reviews match these filters.'))
+	).toBeVisible();
+
+	await filters(page).getByRole('link', { name: 'Desserts' }).click();
+	await expect(page).toHaveURL(/\/explore\?meal=breakfast$/);
+});
+
+test('panel-only filters show as removable chips, and Clear all drops everything', async ({
+	page
+}) => {
+	await page.goto('/explore?meal=lunch&max=8&sort=top');
+	await expect(selected(page)).toHaveText(['Lunch']);
+	await page.getByRole('link', { name: 'Remove: Up to $8' }).click();
+	await expect(page).toHaveURL(/\/explore\?sort=top&meal=lunch$/);
+	await expect(page.getByRole('link', { name: 'Remove: Sorted by top rated' })).toBeVisible();
+
+	await page.getByRole('link', { name: 'Clear all' }).click();
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(selected(page)).toHaveCount(0);
+});
+
+test('the Filters panel updates the grid live and agrees with the quick chips', async ({
+	page
+}) => {
+	await page.goto('/explore');
+	await filters(page).getByRole('button', { name: 'Filters' }).click();
+	const panel = page.getByRole('dialog', { name: 'Filters' });
+	await expect(panel).toBeVisible();
+
+	// A quick chip's value picked in the panel: same URL, and the row shows it as on.
+	await panel.getByRole('link', { name: 'Lunch' }).click();
+	await expect(page).toHaveURL(/\/explore\?meal=lunch$/);
+	await panel.getByRole('link', { name: 'Up to $5' }).click();
+	await expect(page).toHaveURL(/\/explore\?meal=lunch&max=5$/);
+	await expect(panel).toBeVisible();
+	await expect(
+		panel.getByRole('button', { name: /^Show \d+ reviews?$|^No reviews match$/ })
+	).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(panel).toBeHidden();
+	await expect(selected(page)).toHaveText(['Lunch']);
+	await expect(filters(page).getByRole('button', { name: 'Filters 2' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Remove: Up to $5' })).toBeVisible();
+});
+
+test('hand-edited filters or a cursor fall back instead of failing', async ({ page }) => {
+	for (const query of [
+		'?meal=brunch&max=7',
+		'?cursor=garbage',
+		'?cursor=2026-01-01_not-a-uuid',
+		'?sort=top&cursor=o:abc'
+	]) {
+		const response = await page.goto(`/explore${query}`);
+		expect(response?.status(), query).toBe(200);
+		await expect(selected(page), query).toHaveCount(0);
+	}
+});
+
+test('signed out, like and bookmark send you to sign in', async ({ page }) => {
+	await page.goto('/explore');
+	const cards = page.locator('article');
+	test.skip((await cards.count()) === 0, 'no public reviews in this database');
+
+	const card = cards.first();
+	await expect(card.getByRole('link', { name: /^Sign in to like/ })).toHaveAttribute(
+		'href',
+		'/sign-in'
+	);
+	await expect(card.getByRole('link', { name: 'Sign in to bookmark' })).toHaveAttribute(
+		'href',
+		'/sign-in'
+	);
+});
+
+test('a card opens its review, and Back to Explore returns to the same view', async ({ page }) => {
+	// Sorting matches every card, so this pins the query-string round trip without depending on
+	// what the first card happens to be.
+	await page.goto('/explore?sort=liked');
+	test.skip((await page.locator('article').count()) === 0, 'no public reviews in this database');
+
+	await page
+		.getByRole('link', { name: /^Open review:/ })
+		.first()
+		.click();
+	await expect(page).toHaveURL(/\/review\/[0-9a-f-]+\?from=/);
+	expect(new URL(page.url()).searchParams.get('from')).toBe('/explore?sort=liked');
+
+	await page.getByRole('link', { name: 'Back to Explore' }).click();
+	await expect(page).toHaveURL(/\/explore\?sort=liked$/);
+});
+
+const searchField = (page: Page) =>
+	page.getByRole('textbox', { name: 'Search dishes, places and people' });
+const resultTabs = (page: Page) => page.getByRole('navigation', { name: 'Search results' });
+
+test('one character keeps the grid; two show the results tabs', async ({ page }) => {
+	await page.goto('/explore');
+	await searchField(page).fill('c');
+	// Past the 300ms pause: still the grid, and no search in the URL.
+	await page.waitForTimeout(500);
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(filters(page)).toBeVisible();
+
+	await searchField(page).fill('co');
+	await expect(page).toHaveURL(/\/explore\?q=co$/);
+	await expect(resultTabs(page)).toBeVisible();
+	await expect(resultTabs(page).locator('[aria-current="page"]')).toHaveText('All');
+	await expect(page.getByText('Results for “co”')).toBeVisible();
+	await expect(searchField(page)).toBeFocused();
+});
+
+test('a results tab is in the URL, and clearing the search returns to the grid', async ({
+	page
+}) => {
+	await page.goto('/explore?q=zq9zq9');
+	await expect(page.getByText('No results match “zq9zq9”')).toBeVisible();
+	await resultTabs(page)
+		.getByRole('link', { name: /^People/ })
+		.click();
+	await expect(page).toHaveURL(/\/explore\?q=zq9zq9&tab=people$/);
+	await expect(page.getByText('No people match “zq9zq9”')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Clear search' }).click();
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(filters(page)).toBeVisible();
+	await expect(searchField(page)).toBeFocused();
+});
+
+test('Esc clears the search, and a suggestion runs one', async ({ page }) => {
+	await page.goto('/explore?q=zq9zq9');
+	await page.getByRole('link', { name: 'Coffee' }).click();
+	await expect(page).toHaveURL(/\/explore\?q=Coffee$/);
+	await expect(searchField(page)).toHaveValue('Coffee');
+
+	await searchField(page).focus();
+	await page.keyboard.press('Escape');
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(searchField(page)).toHaveValue('');
+});

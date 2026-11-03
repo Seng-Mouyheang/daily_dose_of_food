@@ -4,14 +4,14 @@
  * so a meal is never listed twice. Suggestions are ranked in log/suggest.ts from the history
  * fetched here.
  */
-import { and, count, desc, eq, gte, inArray, isNull, lt, lte, notExists, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import { addDays, monthGrid, zonedDayStart } from '#lib/dashboard/period.ts';
 import type { LinkableLog } from '#lib/log/review.ts';
 import type { LogVisitInput } from '#lib/log/schema.ts';
 import type { HistoryRow, PlaceRow } from '#lib/log/suggest.ts';
 import { lineTotal, type DiningType, type LogEntry, type MealType } from '#lib/log/visits.ts';
 import type { PlaceOption } from '#lib/review/draft.svelte.ts';
-import { live } from './dashboard.ts';
+import { live, standaloneLog } from './dashboard.ts';
 import { db } from './db/index.ts';
 import {
 	cuisineTypes,
@@ -108,16 +108,6 @@ export function reviewItemToEntry(
 	};
 }
 
-/** The viewer's logs that stand on their own: not published as a review, or published as one
- *  that is archived or deleted, which would otherwise hide the meal from the Log entirely. */
-const standalone = (userId: string) =>
-	notExists(
-		db
-			.select({ one: sql`1` })
-			.from(reviews)
-			.where(and(eq(reviews.id, logs.reviewId), live(userId)))
-	);
-
 const placeName = sql<string>`coalesce(${places.name}, ${logs.placeName})`;
 
 /** Everything on the viewer's calendar for one month ("YYYY-MM"), oldest first. */
@@ -153,7 +143,7 @@ export async function getLogMonth(userId: string, month: string, tz: string): Pr
 			.where(
 				and(
 					eq(logs.userId, userId),
-					standalone(userId),
+					standaloneLog(userId),
 					gte(logs.loggedOn, first),
 					lte(logs.loggedOn, last)
 				)
@@ -202,7 +192,7 @@ export async function getDayCounts(userId: string, tz: string): Promise<Record<s
 		db
 			.select({ day: logs.loggedOn, n: count() })
 			.from(logs)
-			.where(and(eq(logs.userId, userId), standalone(userId)))
+			.where(and(eq(logs.userId, userId), standaloneLog(userId)))
 			.groupBy(logs.loggedOn),
 		db
 			.select({ day: reviewDay, n: count() })
@@ -257,19 +247,36 @@ export async function deleteLogs(userId: string, ids: string[]): Promise<LogRow[
 	if (!ids.length) return [];
 	return db
 		.delete(logs)
-		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), standalone(userId)))
+		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), standaloneLog(userId)))
 		.returning();
 }
 
 /** Puts back rows from {@link deleteLogs}, always as the viewer's own. */
-export async function restoreLogs(
-	userId: string,
-	rows: Omit<LogRow, 'userId' | 'reviewId'>[]
-): Promise<void> {
+export async function restoreLogs(userId: string, rows: Omit<LogRow, 'userId'>[]): Promise<void> {
 	if (!rows.length) return;
+	// A log of an archived or deleted review can be deleted too, and must come back still linked,
+	// or unarchiving that review would count the meal twice. The link comes from the request, so
+	// it's kept only when it points at one of the viewer's own reviews.
+	const linked = [...new Set(rows.flatMap((r) => (r.reviewId ? [r.reviewId] : [])))];
+	const own = new Set(
+		linked.length
+			? (
+					await db
+						.select({ id: reviews.id })
+						.from(reviews)
+						.where(and(eq(reviews.userId, userId), inArray(reviews.id, linked)))
+				).map((r) => r.id)
+			: []
+	);
 	await db
 		.insert(logs)
-		.values(rows.map((r) => ({ ...r, userId, reviewId: null })))
+		.values(
+			rows.map((r) => ({
+				...r,
+				userId,
+				reviewId: r.reviewId && own.has(r.reviewId) ? r.reviewId : null
+			}))
+		)
 		.onConflictDoNothing();
 }
 
@@ -323,7 +330,7 @@ export async function getPlaceHistory(userId: string): Promise<PlaceRow[]> {
 			.select({ place: placeName, placeId: logs.placeId, address })
 			.from(logs)
 			.leftJoin(places, eq(logs.placeId, places.id))
-			.where(and(eq(logs.userId, userId), standalone(userId))),
+			.where(and(eq(logs.userId, userId), standaloneLog(userId))),
 		db
 			.select({ place: places.name, placeId: reviews.placeId, address })
 			.from(reviews)
@@ -333,8 +340,9 @@ export async function getPlaceHistory(userId: string): Promise<PlaceRow[]> {
 	return [...own, ...reviewed];
 }
 
-/** The viewer's own logs, not yet a review, that a review is being written from, with the place
- *  they point at (null when it was only typed). Ids that aren't theirs are simply missing. */
+/** The viewer's own standalone logs (not yet a live review) that a review is being written
+ *  from, with the place they point at (null when it was only typed). Ids that aren't theirs are
+ *  simply missing. */
 export async function getLogsForReview(
 	userId: string,
 	ids: string[]
@@ -348,7 +356,7 @@ export async function getLogsForReview(
 		})
 		.from(logs)
 		.leftJoin(places, eq(logs.placeId, places.id))
-		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), isNull(logs.reviewId)))
+		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), standaloneLog(userId)))
 		.orderBy(logs.createdAt);
 
 	const first = rows[0];
@@ -386,11 +394,14 @@ export async function getLogsForReview(
 }
 
 /** Marks logs as published in a review, so the Dashboard and the Log count the review instead.
- *  Only the viewer's own, and only ones not already linked: safe to repeat. */
+ *  Only the viewer's own standalone logs: one already in a live review is left alone (safe to
+ *  repeat), and one whose review was archived or deleted moves to the new review. That's
+ *  deliberate: if the old review is later unarchived or restored, the meal has two reviews and
+ *  counts twice, the same as writing two reviews of it by hand. */
 export async function linkLogsToReview(userId: string, ids: string[], reviewId: string) {
 	if (!ids.length) return;
 	await db
 		.update(logs)
 		.set({ reviewId })
-		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), isNull(logs.reviewId)));
+		.where(and(eq(logs.userId, userId), inArray(logs.id, ids), standaloneLog(userId)));
 }

@@ -10,10 +10,10 @@
 	 *
 	 *  The centre button opens a short chooser: log a visit or write a review.
 	 *
-	 *  Log took Explore's slot. Explore has no page yet (the desktop header keeps it as an inert
-	 *  label), and the bar needs exactly five slots: dropping one would move the write button
-	 *  off centre, which is the one thing in this bar that has to be where the thumb expects
-	 *  it. Explore comes back here when it has a page to link to. */
+	 *  Log took Explore's slot. The bar needs exactly five slots: adding one would move the write
+	 *  button off centre, which is the one thing in this bar that has to be where the thumb
+	 *  expects it. Explore opens from the search icon in the header instead, so no tab is
+	 *  highlighted while you're on it. */
 	let chooser = $state(false);
 	const isHome = $derived(page.url.pathname === '/');
 	const isLog = $derived(page.url.pathname.startsWith('/log'));

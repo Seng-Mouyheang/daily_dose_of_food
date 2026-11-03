@@ -49,7 +49,7 @@
 	{onclose}
 	onclick={(e) => e.target === dialog && onclose()}
 	aria-labelledby="visit-title"
-	class="sheet m-0 mt-auto w-full max-w-none bg-transparent p-0 text-ink lg:m-auto lg:w-[420px]"
+	class="sheet sheet-fade-lg m-0 mt-auto w-full max-w-none bg-transparent p-0 text-ink lg:m-auto lg:w-[420px]"
 >
 	{#if visit && bill}
 		<div
@@ -128,32 +128,3 @@
 		</div>
 	{/if}
 </dialog>
-
-<style>
-	.sheet::backdrop {
-		background: var(--scrim);
-	}
-	.sheet[open] > div {
-		animation: sheet-up 0.22s ease;
-	}
-	@keyframes sheet-up {
-		from {
-			transform: translateY(100%);
-		}
-	}
-	@media (min-width: 1024px) {
-		.sheet[open] > div {
-			animation-name: sheet-fade;
-		}
-		@keyframes sheet-fade {
-			from {
-				opacity: 0;
-			}
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.sheet[open] > div {
-			animation: none;
-		}
-	}
-</style>

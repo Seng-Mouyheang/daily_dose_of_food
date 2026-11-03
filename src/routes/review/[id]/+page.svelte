@@ -129,14 +129,15 @@
 
 	const review = $derived(data.review);
 
-	/** Opened from the journal (`?from=/journal…`), the back link returns to that exact view;
-	 *  anything else, including a hand-edited `from`, falls back to the feed. Only a same-site
-	 *  /journal path is accepted, so the param can't send anyone off-site. */
+	/** Opened from the journal or Explore (`?from=/journal…`, `?from=/explore…`), the back link
+	 *  returns to that exact view; anything else, including a hand-edited `from`, falls back to
+	 *  the feed. Only those same-site paths are accepted, so the param can't send anyone
+	 *  off-site. */
 	const back = $derived.by(() => {
 		const from = page.url.searchParams.get('from');
-		return from && /^\/journal(\?|$)/.test(from)
-			? { href: from, label: 'Back to my journal' }
-			: { href: '/', label: 'Back to feed' };
+		if (from && /^\/journal(\?|$)/.test(from)) return { href: from, label: 'Back to my journal' };
+		if (from && /^\/explore(\?|$)/.test(from)) return { href: from, label: 'Back to Explore' };
+		return { href: '/', label: 'Back to feed' };
 	});
 	const title = $derived(reviewTitle(review));
 

@@ -76,8 +76,7 @@
 					onclick={onpick}
 					aria-current={selected ? 'date' : undefined}
 					aria-label="{dayLabel(d, today)}, {n} {n === 1 ? 'log' : 'logs'}"
-					data-sveltekit-noscroll
-					data-sveltekit-keepfocus
+					data-sveltekit-reset="false"
 					style:grid-column-start={start}
 					class={cell}
 				>

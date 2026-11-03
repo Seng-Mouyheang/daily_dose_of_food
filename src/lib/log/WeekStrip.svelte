@@ -78,7 +78,7 @@
 					aria-current={selected ? 'date' : undefined}
 					aria-disabled={off ? 'true' : undefined}
 					aria-label="{dayLabel(d, today)}{off ? '' : `, ${n} ${n === 1 ? 'log' : 'logs'}`}"
-					data-sveltekit-noscroll
+					data-sveltekit-reset="false"
 					class="group flex min-h-[60px] flex-1 flex-col items-center gap-1.5 rounded-tile py-0.5 {off
 						? 'opacity-45'
 						: ''}"
