@@ -16,6 +16,7 @@
 	import { createLike, createSave } from '#lib/review/engagement.svelte.ts';
 	import { formatCount } from '#lib/review/format.ts';
 	import { favoriteLabel, tileIcon, tileTint } from './explore.ts';
+	import { clipQuote } from './search.ts';
 
 	let {
 		review,
@@ -76,7 +77,7 @@
 			<p
 				class="relative line-clamp-4 px-3 pt-[38px] text-[13px] leading-[1.55] text-ink-2 lg:px-6 lg:pt-14 lg:text-base"
 			>
-				“{view.description}”
+				“{clipQuote(view.description)}”
 			</p>
 		{:else}
 			<!-- Nothing to quote: the watermark alone, centered, rather than an empty tile. -->
