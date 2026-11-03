@@ -70,3 +70,30 @@ export function clipQuote(text: string, max = 140): string {
 	const space = text.lastIndexOf(' ', max);
 	return text.slice(0, space > 80 ? space : max).replace(/[\s,.;:]+$/, '') + '…';
 }
+
+export type SearchTab = 'all' | 'food' | 'people' | 'places';
+
+export function parseSearchTab(raw: string | null): SearchTab {
+	return raw === 'food' || raw === 'people' || raw === 'places' ? raw : 'all';
+}
+
+/** A People row. */
+export interface PersonResult {
+	id: string;
+	displayName: string;
+	username: string;
+	avatarUrl: string | null;
+	bio: string | null;
+	reviewCount: number;
+	followers: number;
+	youFollow: boolean;
+}
+
+/** A Places row: the place and its public reviews' average and count. */
+export interface PlaceResult {
+	id: string;
+	name: string;
+	address: string | null;
+	average: number;
+	reviewCount: number;
+}

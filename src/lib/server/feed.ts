@@ -246,7 +246,7 @@ export interface Children {
 // queries with a guaranteed-empty result, rather than a branch that changes how many queries
 // are in the batch below. The DB does a few microseconds of pointless index work instead of
 // the query being skipped; what it buys back is one network round trip instead of two.
-const NOBODY_ID = '00000000-0000-0000-0000-000000000000';
+export const NOBODY_ID = '00000000-0000-0000-0000-000000000000';
 
 /** The shape likes and saves share: one row per (review, user). */
 function viewerRowIds(
@@ -528,7 +528,7 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
 /** Published, public, live, by a live author: what anyone may see in a list. A soft-deleted
  *  author's reviews drop out with them, rather than showing a card for someone who no longer
  *  exists. Needs `users` joined. */
-const listedReview = and(
+export const listedReview = and(
 	eq(reviews.visibility, 'public'),
 	eq(reviews.reviewStatus, 'published'),
 	isNull(reviews.deletedAt),
@@ -639,11 +639,13 @@ export async function getExploreFeed(opts: {
 	cursor: string | null;
 	viewerId: string | null;
 	limit?: number;
+	/** Narrows to food matching a search (already normalized); see explore-search.ts. */
+	search?: SQL;
 }): Promise<ExplorePage> {
 	const { filters, viewerId } = opts;
 	const limit = feedLimit(opts.limit);
 	const { keyset, offset } = parseExploreCursor(opts.cursor, filters.sort);
-	const matches = and(listedReview, exploreFilterWhere(filters, viewerId));
+	const matches = and(listedReview, exploreFilterWhere(filters, viewerId), opts.search);
 
 	const order =
 		filters.sort === 'top'
@@ -671,10 +673,12 @@ export async function getExploreFeed(opts: {
 			.limit(limit + 1)
 			.offset(offset),
 
+		// Joins places like the spine, so a search on the place name counts the same rows.
 		db
 			.select({ n: count() })
 			.from(reviews)
 			.innerJoin(users, eq(reviews.userId, users.id))
+			.innerJoin(places, eq(reviews.placeId, places.id))
 			.where(matches),
 
 		db
