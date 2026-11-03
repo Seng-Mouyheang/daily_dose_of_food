@@ -3,13 +3,17 @@
 	import FilterPill from '#lib/components/FilterPill.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import ExploreCard from '#lib/explore/ExploreCard.svelte';
-	import { EXPLORE_FILTERS, exploreHref } from '#lib/explore/explore.ts';
+	import {
+		activeCount,
+		exploreUrl,
+		QUICK_CHIPS,
+		quickChipOn,
+		toggleQuickChip
+	} from '#lib/explore/explore.ts';
 	import { timeAgo } from '#lib/review/format.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
-
-	const filterLabel = $derived(EXPLORE_FILTERS.find((f) => f.value === data.filter)?.label);
 
 	// The review page's back link returns to this exact grid: filter and page.
 	const from = $derived(encodeURIComponent(page.url.pathname + page.url.search));
@@ -67,11 +71,11 @@
 			aria-label="Filter"
 			class="-mx-4 flex scrollbar-none gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
 		>
-			{#each EXPLORE_FILTERS as f (f.value)}
+			{#each QUICK_CHIPS as chip (chip.label)}
 				<FilterPill
-					href={exploreHref(f.value)}
-					label={f.label}
-					selected={data.filter === f.value}
+					href={exploreUrl(toggleQuickChip(data.filters, chip))}
+					label={chip.label}
+					selected={quickChipOn(data.filters, chip)}
 				/>
 			{/each}
 		</nav>
@@ -92,7 +96,7 @@
 		{#if data.nextCursor}
 			<!-- A link, as on Home: the next page is a plain navigation that can be linked to. -->
 			<a
-				href={exploreHref(data.filter, data.nextCursor)}
+				href={exploreUrl(data.filters, { cursor: data.nextCursor })}
 				class="mb-3 self-center rounded-input px-4 py-2 text-center text-sm font-semibold text-accent-strong hover:bg-accent-soft max-lg:mx-auto max-lg:block max-lg:w-fit"
 			>
 				Show older reviews
@@ -100,7 +104,7 @@
 		{/if}
 	{:else}
 		<p class="p-6 text-center text-[13px] text-ink-3 lg:p-0">
-			{data.filter === 'all' ? 'No public reviews yet.' : `No reviews match “${filterLabel}” yet.`}
+			{activeCount(data.filters) ? 'No reviews match these filters.' : 'No public reviews yet.'}
 		</p>
 	{/if}
 </main>

@@ -1,39 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
-	EXPLORE_FILTERS,
-	exploreHref,
+	activeCount,
+	EMPTY_FILTERS,
+	exploreUrl,
+	type ExploreFilters,
 	favoriteLabel,
-	parseExploreFilter,
+	filtersToParams,
+	parseFilters,
+	QUICK_CHIPS,
+	quickChipOn,
+	removableChips,
 	tileIcon,
-	tileTint
+	tileTint,
+	toggleQuickChip,
+	toggleValue
 } from './explore.ts';
-
-describe('parseExploreFilter', () => {
-	it('accepts every chip value', () => {
-		for (const { value } of EXPLORE_FILTERS) expect(parseExploreFilter(value)).toBe(value);
-	});
-
-	it('falls back to all for anything else', () => {
-		expect(parseExploreFilter(null)).toBe('all');
-		expect(parseExploreFilter('')).toBe('all');
-		expect(parseExploreFilter('Desserts')).toBe('all');
-		expect(parseExploreFilter('pizza')).toBe('all');
-	});
-});
-
-describe('exploreHref', () => {
-	it('leaves the default filter out of the URL', () => {
-		expect(exploreHref('all')).toBe('/explore');
-	});
-
-	it('carries the filter and the cursor', () => {
-		expect(exploreHref('desserts')).toBe('/explore?filter=desserts');
-		expect(exploreHref('all', 'a_b')).toBe('/explore?cursor=a_b');
-		expect(exploreHref('khmer', '2026-11-01T00:00:00.000Z_x')).toBe(
-			'/explore?filter=khmer&cursor=2026-11-01T00%3A00%3A00.000Z_x'
-		);
-	});
-});
 
 describe('tileTint', () => {
 	it('is stable for an id and covers all three tints', () => {
@@ -84,5 +65,129 @@ describe('favoriteLabel', () => {
 
 	it('degrades to a plain label for a blank name', () => {
 		expect(favoriteLabel(false, '  ')).toBe('FAVORITE');
+	});
+});
+
+const f = (patch: Partial<ExploreFilters>): ExploreFilters => ({ ...EMPTY_FILTERS, ...patch });
+const parse = (qs: string) => parseFilters(new URLSearchParams(qs));
+
+describe('parseFilters / filtersToParams', () => {
+	it('round-trips every section', () => {
+		const all = f({
+			sort: 'top',
+			meals: ['breakfast', 'snack'],
+			type: 'food',
+			cuisines: ['french', 'khmer'],
+			kinds: ['dessert', 'noodles'],
+			maxPrice: 8,
+			rating: 4,
+			from: 'following',
+			photos: true
+		});
+		expect(parse(filtersToParams(all).toString())).toEqual(all);
+	});
+
+	it('leaves every default out of the URL', () => {
+		expect(filtersToParams(EMPTY_FILTERS).toString()).toBe('');
+		expect(exploreUrl(EMPTY_FILTERS)).toBe('/explore');
+	});
+
+	it('drops junk instead of failing', () => {
+		expect(
+			parse(
+				'sort=best&meal=brunch&type=both&cuisine=Khmer&cuisine=a%20b&kind=--&max=7&rating=6&from=me&photos=yes'
+			)
+		).toEqual(EMPTY_FILTERS);
+	});
+
+	it('dedupes lists', () => {
+		expect(parse('meal=lunch&meal=lunch&cuisine=khmer&cuisine=khmer')).toEqual(
+			f({ meals: ['lunch'], cuisines: ['khmer'] })
+		);
+	});
+
+	it('makes the same URL whatever order the filters were picked in', () => {
+		const a = toggleValue(toggleValue(EMPTY_FILTERS, 'meals', 'dinner'), 'meals', 'breakfast');
+		const b = toggleValue(toggleValue(EMPTY_FILTERS, 'meals', 'breakfast'), 'meals', 'dinner');
+		expect(exploreUrl(a)).toBe(exploreUrl(b));
+		expect(exploreUrl(a)).toBe('/explore?meal=breakfast&meal=dinner');
+	});
+});
+
+describe('exploreUrl', () => {
+	it('carries the query, a non-default tab and the cursor after the filters', () => {
+		expect(exploreUrl(f({ type: 'drink' }), { q: 'iced', tab: 'food', cursor: 'a_b' })).toBe(
+			'/explore?type=drink&q=iced&tab=food&cursor=a_b'
+		);
+		expect(exploreUrl(EMPTY_FILTERS, { q: 'iced', tab: 'all' })).toBe('/explore?q=iced');
+	});
+});
+
+describe('quick chips', () => {
+	it('toggle on and off, several at once', () => {
+		const [breakfast, , , drinks, desserts] = QUICK_CHIPS;
+		let state = toggleQuickChip(EMPTY_FILTERS, breakfast);
+		state = toggleQuickChip(state, drinks);
+		state = toggleQuickChip(state, desserts);
+		expect(state).toEqual(f({ meals: ['breakfast'], type: 'drink', kinds: ['dessert'] }));
+		expect(QUICK_CHIPS.filter((c) => quickChipOn(state, c)).map((c) => c.label)).toEqual([
+			'Breakfast',
+			'Drinks',
+			'Desserts'
+		]);
+		expect(toggleQuickChip(state, drinks).type).toBe('any');
+	});
+
+	it('read what the panel set', () => {
+		const khmer = QUICK_CHIPS.find((c) => c.label === 'Khmer')!;
+		expect(quickChipOn(f({ cuisines: ['french', 'khmer'] }), khmer)).toBe(true);
+	});
+});
+
+describe('activeCount', () => {
+	it('counts sections, not values, and ignores sort', () => {
+		expect(activeCount(EMPTY_FILTERS)).toBe(0);
+		expect(activeCount(f({ sort: 'liked' }))).toBe(0);
+		expect(activeCount(f({ meals: ['breakfast', 'lunch'], maxPrice: 5, photos: true }))).toBe(3);
+	});
+});
+
+describe('removableChips', () => {
+	const nameOf = (slug: string) => slug.toUpperCase();
+
+	it('is empty when only quick chips are on', () => {
+		expect(
+			removableChips(f({ meals: ['lunch'], type: 'drink', cuisines: ['khmer'] }), nameOf)
+		).toEqual([]);
+	});
+
+	it('lists panel-only filters, each linking to the state without it', () => {
+		const state = f({
+			meals: ['lunch', 'snack'],
+			type: 'food',
+			cuisines: ['khmer', 'french'],
+			maxPrice: 8,
+			rating: 5,
+			from: 'following',
+			photos: true,
+			sort: 'top'
+		});
+		const chips = removableChips(state, nameOf);
+		expect(chips.map((c) => c.label)).toEqual([
+			'Snack',
+			'FRENCH',
+			'Food only',
+			'Up to $8',
+			'5★ only',
+			'People I follow',
+			'Has photos',
+			'Sorted by top rated'
+		]);
+		expect(chips[1].without.cuisines).toEqual(['khmer']);
+		expect(chips[3].without).toEqual({ ...state, maxPrice: 0 });
+	});
+
+	it('reads a minimum rating below 5 as "and up"', () => {
+		expect(removableChips(f({ rating: 4 }), nameOf)[0].label).toBe('4★ and up');
 	});
 });

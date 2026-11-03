@@ -44,7 +44,7 @@ import type {
 	ReviewComment,
 	Visibility
 } from '#lib/review/card.ts';
-import type { ExploreFilter } from '#lib/explore/explore.ts';
+import type { ExploreFilters, ExploreSort } from '#lib/explore/explore.ts';
 import type { MonthItemRow, MonthlyStats, MonthReviewRow } from '#lib/review/stats.ts';
 import { summarizeMonth } from '#lib/review/stats.ts';
 import { z } from 'zod';
@@ -149,34 +149,38 @@ export function decodeCursor(raw: string | null): FeedCursor | null {
 
 /* ------------------------------------- queries --------------------------------------- */
 
+/** A review joined to its author and place, with nothing hanging off it yet: one row of every
+ *  list here, and of the review page. */
+const spineColumns = {
+	id: reviews.id,
+	userId: reviews.userId,
+	visibility: reviews.visibility,
+	reviewStatus: reviews.reviewStatus,
+	deletedAt: reviews.deletedAt,
+	archivedAt: reviews.archivedAt,
+	reviewType: reviews.reviewType,
+	visitType: reviews.visitType,
+	mealType: reviews.mealType,
+	visitedAt: reviews.visitedAt,
+	publishedAt: reviews.publishedAt,
+	overallRating: reviews.overallRating,
+	title: reviews.title,
+	description: reviews.description,
+	isFavorite: reviews.isFavorite,
+	authorDisplayName: users.displayName,
+	authorAvatarUrl: users.avatarUrl,
+	placeId: places.id,
+	placeName: places.name,
+	placeAddressLine1: places.addressLine1,
+	placeCity: places.city
+};
+
 /** One review joined to its author and place, with nothing hanging off it yet. Carries the raw
  *  gate columns (visibility, reviewStatus, deletedAt, userId) so the caller can decide whether
  *  this viewer may see it before paying for the children. */
 export async function getReviewSpine(reviewId: string) {
 	const [row] = await db
-		.select({
-			id: reviews.id,
-			userId: reviews.userId,
-			visibility: reviews.visibility,
-			reviewStatus: reviews.reviewStatus,
-			deletedAt: reviews.deletedAt,
-			archivedAt: reviews.archivedAt,
-			reviewType: reviews.reviewType,
-			visitType: reviews.visitType,
-			mealType: reviews.mealType,
-			visitedAt: reviews.visitedAt,
-			publishedAt: reviews.publishedAt,
-			overallRating: reviews.overallRating,
-			title: reviews.title,
-			description: reviews.description,
-			isFavorite: reviews.isFavorite,
-			authorDisplayName: users.displayName,
-			authorAvatarUrl: users.avatarUrl,
-			placeId: places.id,
-			placeName: places.name,
-			placeAddressLine1: places.addressLine1,
-			placeCity: places.city
-		})
+		.select(spineColumns)
 		.from(reviews)
 		.innerJoin(users, eq(reviews.userId, users.id))
 		.innerJoin(places, eq(reviews.placeId, places.id))
@@ -521,6 +525,46 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
 	};
 }
 
+/** Published, public, live, by a live author: what anyone may see in a list. A soft-deleted
+ *  author's reviews drop out with them, rather than showing a card for someone who no longer
+ *  exists. Needs `users` joined. */
+const listedReview = and(
+	eq(reviews.visibility, 'public'),
+	eq(reviews.reviewStatus, 'published'),
+	isNull(reviews.deletedAt),
+	isNull(reviews.archivedAt),
+	isNull(users.deletedAt)
+	// blocks: exclude authors the viewer blocked (and who blocked them) here, once blocks exist.
+);
+
+function feedLimit(limit: number | undefined): number {
+	return Math.min(Math.max(1, Math.trunc(limit ?? DEFAULT_LIMIT)), MAX_LIMIT);
+}
+
+function olderThan(cursor: FeedCursor | null): SQL | undefined {
+	return cursor
+		? or(
+				lt(reviews.publishedAt, new Date(cursor.publishedAt)),
+				and(eq(reviews.publishedAt, new Date(cursor.publishedAt)), lt(reviews.id, cursor.id))
+			)
+		: undefined;
+}
+
+/** Spine rows to the page shape: children in one batch, `isOwn` against the viewer. */
+async function toFeedReviews(
+	rows: SpineRow[],
+	viewerId: string | null
+): Promise<FeedPage['reviews']> {
+	const children = await getReviewChildren(
+		rows.map((r) => r.id),
+		viewerId
+	);
+	return rows.map((row) => ({
+		...assembleReview(row, children),
+		isOwn: viewerId !== null && row.userId === viewerId
+	}));
+}
+
 /**
  * The public feed, newest first.
  *
@@ -534,126 +578,259 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
  * trade at this size, and narrowing the index is a migration this milestone doesn't make.
  */
 export async function getForYouFeed(
-	opts: {
-		limit?: number;
-		cursor?: FeedCursor | null;
-		viewerId?: string | null;
-		filter?: ExploreFilter;
-	} = {}
+	opts: { limit?: number; cursor?: FeedCursor | null; viewerId?: string | null } = {}
 ): Promise<FeedPage> {
-	const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? DEFAULT_LIMIT)), MAX_LIMIT);
-	const cursor = opts.cursor ?? null;
-
-	const published = and(
-		eq(reviews.visibility, 'public'),
-		eq(reviews.reviewStatus, 'published'),
-		isNull(reviews.deletedAt),
-		isNull(reviews.archivedAt),
-		// A soft-deleted author's reviews drop out of the feed with them, rather than showing a
-		// card for someone who no longer exists.
-		isNull(users.deletedAt)
-	);
-
-	const olderThanCursor = cursor
-		? or(
-				lt(reviews.publishedAt, new Date(cursor.publishedAt)),
-				and(eq(reviews.publishedAt, new Date(cursor.publishedAt)), lt(reviews.id, cursor.id))
-			)
-		: undefined;
+	const limit = feedLimit(opts.limit);
 
 	const spine = await db
-		.select({
-			id: reviews.id,
-			userId: reviews.userId,
-			visibility: reviews.visibility,
-			reviewStatus: reviews.reviewStatus,
-			deletedAt: reviews.deletedAt,
-			archivedAt: reviews.archivedAt,
-			reviewType: reviews.reviewType,
-			visitType: reviews.visitType,
-			mealType: reviews.mealType,
-			visitedAt: reviews.visitedAt,
-			publishedAt: reviews.publishedAt,
-			overallRating: reviews.overallRating,
-			title: reviews.title,
-			description: reviews.description,
-			isFavorite: reviews.isFavorite,
-			authorDisplayName: users.displayName,
-			authorAvatarUrl: users.avatarUrl,
-			placeId: places.id,
-			placeName: places.name,
-			placeAddressLine1: places.addressLine1,
-			placeCity: places.city
-		})
+		.select(spineColumns)
 		.from(reviews)
 		.innerJoin(users, eq(reviews.userId, users.id))
 		.innerJoin(places, eq(reviews.placeId, places.id))
-		.where(and(published, olderThanCursor, exploreFilterWhere(opts.filter ?? 'all')))
+		.where(and(listedReview, olderThan(opts.cursor ?? null)))
 		.orderBy(desc(reviews.publishedAt), desc(reviews.id))
 		// One more than asked for: if it comes back, there is a next page. Cheaper than a
 		// separate count(*) over the whole table for a question that only needs a yes/no.
 		.limit(limit + 1);
 
 	const page = spine.slice(0, limit);
-	const children = await getReviewChildren(
-		page.map((r) => r.id),
-		opts.viewerId ?? null
-	);
-
 	const last = page.at(-1);
-	const nextCursor =
-		spine.length > limit && last?.publishedAt
-			? { publishedAt: last.publishedAt.toISOString(), id: last.id }
-			: null;
-
-	const viewerId = opts.viewerId ?? null;
 	return {
-		reviews: page.map((row) => ({
-			...assembleReview(row, children),
-			isOwn: viewerId !== null && row.userId === viewerId
-		})),
-		nextCursor
+		reviews: await toFeedReviews(page, opts.viewerId ?? null),
+		nextCursor:
+			spine.length > limit && last?.publishedAt
+				? { publishedAt: last.publishedAt.toISOString(), id: last.id }
+				: null
 	};
 }
 
-/** Explore's chips as SQL, so the filter runs before the LIMIT and paging stays correct. A
- *  review covering a dish and a drink matches if either item does. Matched by slug, not by
- *  display name, so renaming a type in the lookup table doesn't silently empty a chip. */
-function exploreFilterWhere(filter: ExploreFilter): SQL | undefined {
-	const itemOfThisReview = eq(reviewItems.reviewId, reviews.id);
-	switch (filter) {
-		case 'all':
-			return undefined;
-		case 'breakfast':
-		case 'lunch':
-		case 'dinner':
-			return eq(reviews.mealType, filter);
-		case 'drinks':
-			return exists(
-				db
-					.select({ one: sql`1` })
-					.from(reviewItems)
-					.where(and(itemOfThisReview, eq(reviewItems.itemType, 'drink')))
-			);
-		case 'desserts':
-			return exists(
-				db
-					.select({ one: sql`1` })
-					.from(reviewItems)
-					.innerJoin(reviewItemFoodTypes, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
-					.innerJoin(foodTypes, eq(foodTypes.id, reviewItemFoodTypes.foodTypeId))
-					.where(and(itemOfThisReview, eq(foodTypes.slug, 'dessert')))
-			);
-		case 'khmer':
-			return exists(
-				db
-					.select({ one: sql`1` })
-					.from(reviewItems)
-					.innerJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
-					.innerJoin(cuisineTypes, eq(cuisineTypes.id, foodItemDetails.cuisineTypeId))
-					.where(and(itemOfThisReview, eq(cuisineTypes.slug, 'khmer')))
-			);
+/* -------------------------------------- Explore -------------------------------------- */
+
+/** One choice in the Filters panel's Cuisine or "Dish or drink" section. */
+export interface ExploreFacet {
+	slug: string;
+	name: string;
+	/** Public reviews using it; the panel lists the most used first. */
+	count: number;
+}
+
+export interface ExplorePage {
+	reviews: FeedPage['reviews'];
+	/** Already encoded for the URL; null on the last page. */
+	nextCursor: string | null;
+	/** Every review the filters match, for the panel's "Show 12 reviews". */
+	matchCount: number;
+	facets: { cuisines: ExploreFacet[]; kinds: ExploreFacet[] };
+}
+
+/** Explore's page token. Newest first pages by keyset, as Home does. Top rated and Most liked
+ *  page by offset (`o:40`): a keyset over (rating or likes, published_at, id) would work, but
+ *  these orders barely shift while you read, and the offset is one number instead of four. */
+function parseExploreCursor(
+	raw: string | null,
+	sort: ExploreSort
+): { keyset: FeedCursor | null; offset: number } {
+	if (sort === 'new') return { keyset: decodeCursor(raw), offset: 0 };
+	const match = raw?.match(/^o:(\d{1,6})$/);
+	return { keyset: null, offset: match ? Number(match[1]) : 0 };
+}
+
+const likeCountOf = sql<number>`(select count(*)::int from ${reviewLikes} where ${reviewLikes.reviewId} = ${reviews.id})`;
+
+/**
+ * Explore's grid: every listed review, narrowed by the filters (as SQL, before the LIMIT, so
+ * paging stays correct) and in the chosen order. Its count and the panel's facet lists ride in
+ * the same batch as the spine, so a page is two round trips: that batch, then the children.
+ */
+export async function getExploreFeed(opts: {
+	filters: ExploreFilters;
+	cursor: string | null;
+	viewerId: string | null;
+	limit?: number;
+}): Promise<ExplorePage> {
+	const { filters, viewerId } = opts;
+	const limit = feedLimit(opts.limit);
+	const { keyset, offset } = parseExploreCursor(opts.cursor, filters.sort);
+	const matches = and(listedReview, exploreFilterWhere(filters, viewerId));
+
+	const order =
+		filters.sort === 'top'
+			? [
+					desc(reviews.overallRating),
+					desc(likeCountOf),
+					desc(reviews.publishedAt),
+					desc(reviews.id)
+				]
+			: filters.sort === 'liked'
+				? [desc(likeCountOf), desc(reviews.publishedAt), desc(reviews.id)]
+				: [desc(reviews.publishedAt), desc(reviews.id)];
+
+	// Facets count distinct listed reviews per type; a review naming a type on two items counts once.
+	const reviewsUsing = sql<number>`count(distinct ${reviews.id})::int`;
+
+	const [spine, [total], cuisineRows, foodKindRows, drinkKindRows] = await db.batch([
+		db
+			.select(spineColumns)
+			.from(reviews)
+			.innerJoin(users, eq(reviews.userId, users.id))
+			.innerJoin(places, eq(reviews.placeId, places.id))
+			.where(and(matches, olderThan(keyset)))
+			.orderBy(...order)
+			.limit(limit + 1)
+			.offset(offset),
+
+		db
+			.select({ n: count() })
+			.from(reviews)
+			.innerJoin(users, eq(reviews.userId, users.id))
+			.where(matches),
+
+		db
+			.select({ slug: cuisineTypes.slug, name: cuisineTypes.name, count: reviewsUsing })
+			.from(reviews)
+			.innerJoin(users, eq(reviews.userId, users.id))
+			.innerJoin(reviewItems, eq(reviewItems.reviewId, reviews.id))
+			.innerJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
+			.innerJoin(cuisineTypes, eq(cuisineTypes.id, foodItemDetails.cuisineTypeId))
+			.where(listedReview)
+			.groupBy(cuisineTypes.slug, cuisineTypes.name),
+
+		db
+			.select({ slug: foodTypes.slug, name: foodTypes.name, count: reviewsUsing })
+			.from(reviews)
+			.innerJoin(users, eq(reviews.userId, users.id))
+			.innerJoin(reviewItems, eq(reviewItems.reviewId, reviews.id))
+			.innerJoin(reviewItemFoodTypes, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
+			.innerJoin(foodTypes, eq(foodTypes.id, reviewItemFoodTypes.foodTypeId))
+			.where(listedReview)
+			.groupBy(foodTypes.slug, foodTypes.name),
+
+		db
+			.select({ slug: drinkTypes.slug, name: drinkTypes.name, count: reviewsUsing })
+			.from(reviews)
+			.innerJoin(users, eq(reviews.userId, users.id))
+			.innerJoin(reviewItems, eq(reviewItems.reviewId, reviews.id))
+			.innerJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
+			.innerJoin(drinkTypes, eq(drinkTypes.id, drinkItemDetails.drinkTypeId))
+			.where(listedReview)
+			.groupBy(drinkTypes.slug, drinkTypes.name)
+	]);
+
+	const page = spine.slice(0, limit);
+	const last = page.at(-1);
+	let nextCursor: string | null = null;
+	if (spine.length > limit && last) {
+		nextCursor =
+			filters.sort === 'new'
+				? last.publishedAt &&
+					encodeCursor({ publishedAt: last.publishedAt.toISOString(), id: last.id })
+				: `o:${offset + limit}`;
 	}
+
+	return {
+		reviews: await toFeedReviews(page, viewerId),
+		nextCursor: nextCursor || null,
+		matchCount: total?.n ?? 0,
+		facets: {
+			cuisines: byUse(cuisineRows),
+			kinds: byUse([...foodKindRows, ...drinkKindRows])
+		}
+	};
+}
+
+/** Most used first, then by name. A food type and a drink type sharing a slug (the filter matches
+ *  both anyway) are merged into one choice. */
+function byUse(rows: ExploreFacet[]): ExploreFacet[] {
+	const bySlug = new Map<string, ExploreFacet>();
+	for (const row of rows) {
+		const seen = bySlug.get(row.slug);
+		bySlug.set(row.slug, seen ? { ...seen, count: seen.count + row.count } : { ...row });
+	}
+	return [...bySlug.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+/** Explore's filters as SQL: OR inside a section, AND across sections, an empty section adds
+ *  nothing. A review covering a dish and a drink matches if either item does. Types are matched
+ *  by slug, not display name, so renaming one in the lookup table doesn't silently empty a chip. */
+function exploreFilterWhere(f: ExploreFilters, viewerId: string | null): SQL | undefined {
+	const itemOfThisReview = eq(reviewItems.reviewId, reviews.id);
+	const anyItem = (where: SQL | undefined) =>
+		exists(
+			db
+				.select({ one: sql`1` })
+				.from(reviewItems)
+				.where(and(itemOfThisReview, where))
+		);
+
+	return and(
+		f.meals.length ? inArray(reviews.mealType, f.meals) : undefined,
+		f.type === 'any' ? undefined : anyItem(eq(reviewItems.itemType, f.type)),
+		f.cuisines.length
+			? exists(
+					db
+						.select({ one: sql`1` })
+						.from(reviewItems)
+						.innerJoin(foodItemDetails, eq(foodItemDetails.reviewItemId, reviewItems.id))
+						.innerJoin(cuisineTypes, eq(cuisineTypes.id, foodItemDetails.cuisineTypeId))
+						.where(and(itemOfThisReview, inArray(cuisineTypes.slug, f.cuisines)))
+				)
+			: undefined,
+		f.kinds.length
+			? or(
+					exists(
+						db
+							.select({ one: sql`1` })
+							.from(reviewItems)
+							.innerJoin(reviewItemFoodTypes, eq(reviewItemFoodTypes.reviewItemId, reviewItems.id))
+							.innerJoin(foodTypes, eq(foodTypes.id, reviewItemFoodTypes.foodTypeId))
+							.where(and(itemOfThisReview, inArray(foodTypes.slug, f.kinds)))
+					),
+					exists(
+						db
+							.select({ one: sql`1` })
+							.from(reviewItems)
+							.innerJoin(drinkItemDetails, eq(drinkItemDetails.reviewItemId, reviewItems.id))
+							.innerJoin(drinkTypes, eq(drinkTypes.id, drinkItemDetails.drinkTypeId))
+							.where(and(itemOfThisReview, inArray(drinkTypes.slug, f.kinds)))
+					)
+				)
+			: undefined,
+		// The price on the card is the items' total before tax; a review with no prices at all
+		// sums to null and so never matches a price cap.
+		f.maxPrice
+			? sql`(select sum(${reviewItems.price}) from ${reviewItems} where ${itemOfThisReview}) <= ${f.maxPrice}`
+			: undefined,
+		f.rating ? gte(reviews.overallRating, String(f.rating)) : undefined,
+		// Signed out follows nobody, so "People I follow" is empty rather than everything.
+		f.from === 'following'
+			? exists(
+					db
+						.select({ one: sql`1` })
+						.from(follows)
+						.where(
+							and(
+								eq(follows.followerId, viewerId ?? NOBODY_ID),
+								eq(follows.followeeId, reviews.userId)
+							)
+						)
+				)
+			: undefined,
+		f.photos
+			? exists(
+					db
+						.select({ one: sql`1` })
+						.from(reviewMedia)
+						.innerJoin(mediaFiles, eq(reviewMedia.mediaId, mediaFiles.id))
+						.where(
+							and(
+								eq(reviewMedia.reviewId, reviews.id),
+								eq(mediaFiles.mediaStatus, 'active'),
+								isNull(mediaFiles.deletedAt)
+							)
+						)
+				)
+			: undefined
+	);
 }
 
 /** A review's comments: top-level threads first (pinned, then newest), then their replies newest
