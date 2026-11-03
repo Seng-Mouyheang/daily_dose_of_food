@@ -127,3 +127,52 @@ test('a card opens its review, and Back to Explore returns to the same view', as
 	await page.getByRole('link', { name: 'Back to Explore' }).click();
 	await expect(page).toHaveURL(/\/explore\?sort=liked$/);
 });
+
+const searchField = (page: Page) =>
+	page.getByRole('textbox', { name: 'Search dishes, places and people' });
+const resultTabs = (page: Page) => page.getByRole('navigation', { name: 'Search results' });
+
+test('one character keeps the grid; two show the results tabs', async ({ page }) => {
+	await page.goto('/explore');
+	await searchField(page).fill('c');
+	// Past the 300ms pause: still the grid, and no search in the URL.
+	await page.waitForTimeout(500);
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(filters(page)).toBeVisible();
+
+	await searchField(page).fill('co');
+	await expect(page).toHaveURL(/\/explore\?q=co$/);
+	await expect(resultTabs(page)).toBeVisible();
+	await expect(resultTabs(page).locator('[aria-current="page"]')).toHaveText('All');
+	await expect(page.getByText('Results for “co”')).toBeVisible();
+	await expect(searchField(page)).toBeFocused();
+});
+
+test('a results tab is in the URL, and clearing the search returns to the grid', async ({
+	page
+}) => {
+	await page.goto('/explore?q=zq9zq9');
+	await expect(page.getByText('No results match “zq9zq9”')).toBeVisible();
+	await resultTabs(page)
+		.getByRole('link', { name: /^People/ })
+		.click();
+	await expect(page).toHaveURL(/\/explore\?q=zq9zq9&tab=people$/);
+	await expect(page.getByText('No people match “zq9zq9”')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Clear search' }).click();
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(filters(page)).toBeVisible();
+	await expect(searchField(page)).toBeFocused();
+});
+
+test('Esc clears the search, and a suggestion runs one', async ({ page }) => {
+	await page.goto('/explore?q=zq9zq9');
+	await page.getByRole('link', { name: 'Coffee' }).click();
+	await expect(page).toHaveURL(/\/explore\?q=Coffee$/);
+	await expect(searchField(page)).toHaveValue('Coffee');
+
+	await searchField(page).focus();
+	await page.keyboard.press('Escape');
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(searchField(page)).toHaveValue('');
+});

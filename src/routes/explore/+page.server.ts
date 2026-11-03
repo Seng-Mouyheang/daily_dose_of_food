@@ -1,4 +1,4 @@
-import { parseFilters } from '#lib/explore/explore.ts';
+import { EMPTY_FILTERS, parseFilters } from '#lib/explore/explore.ts';
 import { normalizeQuery, parseSearchTab, searchActive } from '#lib/explore/search.ts';
 import { getOrSyncUser } from '#lib/server/auth.ts';
 import { countFood, foodMatches, searchPeople, searchPlaces } from '#lib/server/explore-search.ts';
@@ -10,7 +10,8 @@ import type { PageServerLoad } from './$types';
  *  looking.
  *
  *  With a search of 2+ characters the grid becomes the Food results (still filtered and paged),
- *  and people and places come along for the other tabs. All four queries run at once. */
+ *  and people and places come along for the other tabs. All four queries run at once. The
+ *  filters only narrow the Food tab; All shows the top food matches whatever they are set to. */
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await getOrSyncUser(locals);
 	const viewerId = user?.id ?? null;
@@ -24,8 +25,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	const q = normalizeQuery(raw);
+	const tab = parseSearchTab(url.searchParams.get('tab'));
 	const [feed, people, places, foodCount] = await Promise.all([
-		getExploreFeed({ filters, cursor, viewerId, search: foodMatches(q) }),
+		getExploreFeed({
+			filters: tab === 'food' ? filters : EMPTY_FILTERS,
+			cursor: tab === 'food' ? cursor : null,
+			viewerId,
+			search: foodMatches(q)
+		}),
 		searchPeople(q, viewerId),
 		searchPlaces(q),
 		countFood(q)
@@ -37,7 +44,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		...feed,
 		search: {
 			q: raw.trim(),
-			tab: parseSearchTab(url.searchParams.get('tab')),
+			tab,
 			people,
 			places,
 			foodCount

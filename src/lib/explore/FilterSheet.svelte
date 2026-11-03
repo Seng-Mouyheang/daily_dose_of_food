@@ -50,10 +50,10 @@
 		else if (!open && dialog.open) dialog.close();
 	});
 
+	// Replace the history entry, and keep scroll and focus where they are (`reset="false"`).
 	const nav = {
 		'data-sveltekit-replacestate': '',
-		'data-sveltekit-noscroll': '',
-		'data-sveltekit-keepfocus': ''
+		'data-sveltekit-reset': 'false'
 	} as const;
 
 	const PRICES = [0, 3, 5, 8, 12] as const;
