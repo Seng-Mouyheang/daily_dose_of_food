@@ -167,7 +167,8 @@ of these before writing new markup for the same job.
 
 ## 7. Accessibility floor
 
-- Minimum 44×44px touch target on anything tappable.
+- Minimum 44×44px touch target on anything tappable. For a control drawn smaller (a 30px filter
+  pill), add the `tap-target` utility (`layout.css`) rather than growing the visible control.
 - `aria-pressed` on toggle-style buttons (tiles, chips, segmented options).
 - `role="radiogroup"` / `role="radio"` + `aria-checked` for single-choice sets rendered as custom
   buttons (star rating, visibility picker).

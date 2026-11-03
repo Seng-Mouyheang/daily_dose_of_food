@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clipQuote, highlight, normalizeQuery, placeScore, searchActive } from './search.ts';
+import { clipQuote, fold, highlight, normalizeQuery, searchActive } from './search.ts';
 
 describe('normalizeQuery / searchActive', () => {
 	it('ignores case, accents, spaces and a leading @', () => {
@@ -16,25 +16,11 @@ describe('normalizeQuery / searchActive', () => {
 	});
 });
 
-describe('placeScore', () => {
-	const addr = 'Sisowath Quay, Phnom Penh';
-
-	it('ranks name start > word start > anywhere > address only', () => {
-		expect(placeScore('Brown Coffee Riverside', addr, 'brown')).toBe(4);
-		expect(placeScore('Brown Coffee Riverside', addr, 'river')).toBe(3);
-		expect(placeScore('Brown Coffee Riverside', addr, 'side')).toBe(2);
-		expect(placeScore('Brown Coffee Riverside', addr, 'sisowath')).toBe(1);
-		expect(placeScore('Brown Coffee Riverside', addr, 'pizza')).toBe(0);
-	});
-
-	it('only counts the address from 4 characters', () => {
-		expect(placeScore('Malis', 'Norodom Blvd', 'nor')).toBe(0);
-		expect(placeScore('Malis', 'Norodom Blvd', 'noro')).toBe(1);
-		expect(placeScore('Malis', null, 'noro')).toBe(0);
-	});
-
-	it('ignores accents in the name', () => {
-		expect(placeScore('Artillery Café', null, 'cafe')).toBe(3);
+describe('fold', () => {
+	it("folds letters NFD doesn't split, the way unaccent does", () => {
+		expect(fold('Smørrebrød')).toBe('smorrebrod');
+		expect(fold('Łódź Grill')).toBe('lodz grill');
+		expect(fold('Cæsar Straße')).toBe('caesar strasse');
 	});
 });
 
@@ -52,8 +38,36 @@ describe('highlight', () => {
 	});
 
 	it('handles decomposed accents', () => {
-		const text = 'Café Mimi';
-		expect(highlight(text, 'mimi')).toEqual({ before: 'Café ', match: 'Mimi', after: '' });
+		const text = 'Cafe\u0301 Mimi';
+		expect(highlight(text, 'mimi')).toEqual({ before: 'Cafe\u0301 ', match: 'Mimi', after: '' });
+	});
+
+	it('keeps a decomposed accent with the letter it sits on, at either end of the match', () => {
+		expect(highlight('Cafe\u0301 Mimi', 'cafe')).toEqual({
+			before: '',
+			match: 'Cafe\u0301',
+			after: ' Mimi'
+		});
+		expect(highlight('Cafe\u0301 Mimi', 'e')).toEqual({
+			before: 'Caf',
+			match: 'e\u0301',
+			after: ' Mimi'
+		});
+		expect(highlight('Cafe\u0301x', 'x')).toEqual({ before: 'Cafe\u0301', match: 'x', after: '' });
+	});
+
+	it('highlights letters folded by unaccent, even a match starting inside one', () => {
+		expect(highlight('Smørrebrød', 'smorrebrod')).toEqual({
+			before: '',
+			match: 'Smørrebrød',
+			after: ''
+		});
+		// æ folds to "ae", and "esar" starts on its second letter: the whole æ is highlighted.
+		expect(highlight('Cæsar Salad', 'esar')).toEqual({
+			before: 'C',
+			match: 'æsar',
+			after: ' Salad'
+		});
 	});
 
 	it('returns everything in before when there is no match', () => {

@@ -836,9 +836,9 @@ export interface PlacePage {
 		id: string;
 		name: string;
 		address: string | null;
-		/** For Directions; null if the stored point can't be read. */
-		lat: number | null;
-		lng: number | null;
+		/** For Directions. */
+		lat: number;
+		lng: number;
 	};
 	/** Every listed review here, newest first. */
 	reviews: FeedPage['reviews'];
@@ -861,8 +861,8 @@ export async function getPlacePage(
 				address: sql<
 					string | null
 				>`nullif(concat_ws(', ', ${places.addressLine1}, ${places.city}), '')`,
-				lat: sql<number | null>`st_y(${places.location}::geometry)`,
-				lng: sql<number | null>`st_x(${places.location}::geometry)`
+				lat: sql<number>`st_y(${places.location}::geometry)`,
+				lng: sql<number>`st_x(${places.location}::geometry)`
 			})
 			.from(places)
 			.where(and(eq(places.id, placeId), isNull(places.deletedAt)))

@@ -9,13 +9,16 @@ import { DINING_OPTIONS, MEALS } from './visits.ts';
 
 const lookupId = z.number().int().positive().nullable().default(null);
 
+/** The most of one item a log can hold; the form's stepper stops here too. */
+export const MAX_QTY = 99;
+
 export const logItemSchema = z.object({
 	title: z.string().trim().min(1).max(200),
 	itemType: z.enum(['food', 'drink']),
 	foodTypeId: lookupId,
 	drinkTypeId: lookupId,
 	cuisineTypeId: lookupId,
-	qty: z.number().int().min(1).max(99),
+	qty: z.number().int().min(1).max(MAX_QTY),
 	/** Price of one item, before tax */
 	price: z.number().nonnegative().max(1_000_000),
 	/** Tax as a percentage, e.g. 10 for 10%; the bill's rate, the same on every item */

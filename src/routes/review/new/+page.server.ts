@@ -29,7 +29,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const lookups = await getReviewFormLookups();
 
 	// Coming from the Log (`?fromLog=<ids>`): start the form from that visit. Logs that aren't
-	// yours or are already a review are ignored, and then it's just a blank form.
+	// yours or are already in a live review are ignored, and then it's just a blank form. Logs of
+	// an archived or deleted review count as unreviewed (see linkLogsToReview).
 	const ids = logIds(url.searchParams.get('fromLog'));
 	if (!ids.length) return { lookups, initial: null, fromLog: [] };
 	const { logs, place } = await getLogsForReview((await requireUser(locals)).id, ids);

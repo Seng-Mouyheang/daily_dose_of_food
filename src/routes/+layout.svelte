@@ -91,16 +91,20 @@
 					</SignUpButton>
 				</Show>
 				<Show when="signed-in">
-					<!-- Explore's way in on a phone: the tab bar has no slot for it (spec §1). -->
+					<!-- Explore's way in on a phone: the tab bar has no slot for it (spec §1). A 44px
+					     touch target (DESIGN.md §7) that the -4px margin keeps at 36px in the row, so it
+					     lines up with the bell; the visible circle is the 36px inner span. -->
 					<a
 						href="/explore"
 						aria-label="Explore"
 						aria-current={isExplore ? 'page' : undefined}
-						class="flex h-9 w-9 items-center justify-center rounded-full hover:bg-sunken lg:hidden {isExplore
+						class="group -m-1 grid size-11 place-items-center rounded-full lg:hidden {isExplore
 							? 'text-accent-strong'
 							: 'text-ink-2'}"
 					>
-						<Icon name="search" size={19} />
+						<span class="grid size-9 place-items-center rounded-full group-hover:bg-sunken">
+							<Icon name="search" size={19} />
+						</span>
 					</a>
 					<button
 						type="button"

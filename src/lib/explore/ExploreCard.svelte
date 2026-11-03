@@ -168,12 +168,12 @@
 				{#if !review.isOwn}
 					<button
 						type="button"
-						class="{actClass} {save.saved ? 'text-accent-strong' : 'text-ink-2 hover:text-ink'}"
-						aria-pressed={save.saved}
-						aria-label={save.saved ? 'Remove bookmark' : 'Bookmark'}
+						class="{actClass} {save.on ? 'text-accent-strong' : 'text-ink-2 hover:text-ink'}"
+						aria-pressed={save.on}
+						aria-label={save.on ? 'Remove bookmark' : 'Bookmark'}
 						onclick={save.toggle}
 					>
-						<Icon name="bookmark" size={17} filled={save.saved} />
+						<Icon name="bookmark" size={17} filled={save.on} />
 					</button>
 				{/if}
 			{:else}

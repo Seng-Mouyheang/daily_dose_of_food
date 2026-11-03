@@ -151,9 +151,9 @@
 		{#if canLike}
 			<button
 				type="button"
-				class={`${buttonClass} ${save.saved ? 'text-accent' : 'text-ink-2 hover:text-ink'}`}
-				aria-pressed={save.saved}
-				aria-label={save.saved ? 'Saved' : 'Save'}
+				class={`${buttonClass} ${save.on ? 'text-accent' : 'text-ink-2 hover:text-ink'}`}
+				aria-pressed={save.on}
+				aria-label={save.on ? 'Saved' : 'Save'}
 				onclick={save.toggle}
 			>
 				<span
@@ -161,7 +161,7 @@
 					class:pop={save.popping}
 					onanimationend={() => (save.popping = false)}
 				>
-					<Icon name="bookmark" filled={save.saved} />
+					<Icon name="bookmark" filled={save.on} />
 				</span>
 			</button>
 		{:else}

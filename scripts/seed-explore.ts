@@ -230,8 +230,8 @@ async function remove() {
 	await db
 		.delete(follows)
 		.where(or(inArray(follows.followerId, ids), inArray(follows.followeeId, ids)));
-	await db.delete(schema.reviewLikes).where(inArray(schema.reviewLikes.userId, ids));
-	await db.delete(schema.reviewSaves).where(inArray(schema.reviewSaves.userId, ids));
+	// The demo accounts can't sign in, so they have no likes or saves of their own; anyone else's
+	// likes and saves of their reviews cascade with the reviews.
 	await db.delete(reviews).where(inArray(reviews.userId, ids));
 	await db.delete(users).where(inArray(users.id, ids));
 	return ids.length;

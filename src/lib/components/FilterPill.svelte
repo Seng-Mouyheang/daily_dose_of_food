@@ -9,7 +9,9 @@
 	 *
 	 *  `removable` is a filter that is on and can only be dropped from here (Explore's chips
 	 *  under the row): always the selected look, with an × and a "Remove: …" label. `icon` leads
-	 *  the label (the Filters panel's ticks and camera). */
+	 *  the label (the Filters panel's ticks and camera).
+	 *
+	 *  The pill is drawn 28–30px tall; `tap-target` (layout.css) makes the link 44×44 to tap. */
 	import type { HTMLAnchorAttributes } from 'svelte/elements';
 	import Icon from './Icon.svelte';
 	import type { IconName } from './icons.ts';
@@ -35,7 +37,7 @@
 	aria-current={selected && !removable ? 'true' : undefined}
 	aria-label={removable ? `Remove: ${label}` : undefined}
 	{...rest}
-	class="inline-flex shrink-0 items-center gap-1 rounded-full border whitespace-nowrap transition-colors {removable
+	class="tap-target inline-flex shrink-0 items-center justify-center gap-1 rounded-full border whitespace-nowrap transition-colors {removable
 		? 'h-7 px-2.5 text-[12.5px]'
 		: 'h-7.5 px-2.5 text-[13px]'} {selected || removable
 		? 'border-ink bg-ink font-semibold text-bg'

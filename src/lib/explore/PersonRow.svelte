@@ -33,13 +33,13 @@
 	{#if signedIn}
 		<button
 			type="button"
-			aria-pressed={follow.following}
+			aria-pressed={follow.on}
 			onclick={follow.toggle}
-			class="{buttonClass} {follow.following
+			class="{buttonClass} {follow.on
 				? 'bg-sunken text-ink-2'
 				: 'bg-accent-soft text-accent-strong'}"
 		>
-			{follow.following ? 'Following' : 'Follow'}
+			{follow.on ? 'Following' : 'Follow'}
 		</button>
 	{:else}
 		<a href="/sign-in" class="{buttonClass} bg-accent-soft text-accent-strong">Follow</a>

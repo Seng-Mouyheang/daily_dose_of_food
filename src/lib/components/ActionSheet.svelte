@@ -76,22 +76,3 @@
 		>
 	</div>
 </dialog>
-
-<style>
-	.sheet::backdrop {
-		background: var(--scrim);
-	}
-	.sheet[open] > div {
-		animation: sheet-up 0.22s ease;
-	}
-	@keyframes sheet-up {
-		from {
-			transform: translateY(100%);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.sheet[open] > div {
-			animation: none;
-		}
-	}
-</style>

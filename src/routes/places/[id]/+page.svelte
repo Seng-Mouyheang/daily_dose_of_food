@@ -55,17 +55,13 @@
 		fromSearch ? `/explore?q=${encodeURIComponent(data.query)}` : '/explore'
 	);
 	const directions = $derived(
-		data.place.lat !== null && data.place.lng !== null
-			? `https://www.google.com/maps/search/?api=1&query=${data.place.lat},${data.place.lng}`
-			: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-					[data.place.name, data.place.address].filter(Boolean).join(', ')
-				)}`
+		`https://www.google.com/maps/search/?api=1&query=${data.place.lat},${data.place.lng}`
 	);
 	// The review page's back link returns here.
 	const from = $derived(encodeURIComponent(page.url.pathname + page.url.search));
 
 	const chip =
-		'inline-flex h-7.5 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[13px] whitespace-nowrap transition-colors';
+		'tap-target inline-flex h-7.5 shrink-0 items-center justify-center gap-1 rounded-full border px-2.5 text-[13px] whitespace-nowrap transition-colors';
 	const chipOn = 'border-ink bg-ink font-semibold text-bg';
 	const chipOff = 'border-line bg-surface font-medium text-ink-2 hover:border-ink-3';
 	const button =
@@ -164,9 +160,10 @@
 				>
 				<!-- Phone: one row that swipes sideways under a fade, bleeding to the screen edges.
 				     Desktop: you can't swipe with a mouse, so it wraps and caps the dishes at 8. The
-				     toggles come first so they never scroll out of sight. -->
+				     toggles come first so they never scroll out of sight. `tap-row` keeps the chips'
+				     44px tap areas from being clipped while it scrolls. -->
 				<div
-					class="dish-row -mx-4 flex scrollbar-none gap-1.5 overflow-x-auto overscroll-x-contain px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
+					class="dish-row -mx-4 tap-row flex scrollbar-none gap-x-1.5 gap-y-2 overflow-x-auto overscroll-x-contain px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
 				>
 					{#if toggles.following}
 						<button

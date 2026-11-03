@@ -1,13 +1,32 @@
 /**
- * Explore search's pure rules: how a query is normalized and when it counts, how places rank,
- * how a match is split for highlighting, and how a photo-free tile's quote is cut. The server
- * runs the matching in SQL with the same normalization (lower + unaccent); these are the
- * client-side half and the parts SQL can't express cleanly.
+ * Explore search's pure rules: how a query is normalized and when it counts, how a match is split
+ * for highlighting, and how a photo-free tile's quote is cut. Matching and ranking run in SQL
+ * (lower + unaccent, explore-search.ts); `fold` mirrors them closely enough to highlight the match.
  */
 
-/** Lowercase, accents stripped (é → e), so "Pâté" and "pate" match. */
+/** Letters `unaccent` rewrites that NFD doesn't split into a base and a mark. */
+const LETTERS: Record<string, string> = {
+	ø: 'o',
+	ł: 'l',
+	đ: 'd',
+	ð: 'd',
+	þ: 'th',
+	æ: 'ae',
+	œ: 'oe',
+	ß: 'ss',
+	ı: 'i'
+};
+
+const LETTER = new RegExp(`[${Object.keys(LETTERS).join('')}]`, 'g');
+
+/** Lowercase, accents stripped (é → e, ø → o), like SQL's `unaccent(lower(…))`, so "Pâté" and
+ *  "pate" match. */
 export function fold(text: string): string {
-	return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+	return text
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase()
+		.replace(LETTER, (c) => LETTERS[c]);
 }
 
 /** The query as matched: trimmed, folded, a leading @ dropped so "@jaiden" finds a handle. */
@@ -20,18 +39,6 @@ export const MIN_QUERY = 2;
 
 export function searchActive(raw: string | null | undefined): boolean {
 	return normalizeQuery(raw).length >= MIN_QUERY;
-}
-
-/** How well a place matches, 0 for not at all. Name matches always rank above address ones:
- *  4 the name starts with it, 3 a word in the name does, 2 it's anywhere in the name, 1 only the
- *  address has it — and the address only counts from 4 characters, so "st" doesn't match every
- *  street. `q` is already normalized. */
-export function placeScore(name: string, address: string | null, q: string): number {
-	const n = fold(name);
-	const i = n.indexOf(q);
-	if (i === 0) return 4;
-	if (i > 0) return n.split(/[^a-z0-9]+/).some((w) => w.startsWith(q)) ? 3 : 2;
-	return q.length >= 4 && address && fold(address).includes(q) ? 1 : 0;
 }
 
 /** `text` split around the first match of `q`, for markup without {@html}. Matching is folded,
@@ -49,10 +56,14 @@ export function highlight(
 	let start = -1;
 	let end = chars.length;
 	for (let i = 0; i < chars.length; i++) {
-		if (pos === at) start = i;
+		// The match starts on the character whose folded text covers `at` (one character can fold
+		// to two, like æ → ae). A combining mark folds to '': it belongs to the letter before it, so
+		// the match neither starts on one nor ends before one.
+		if (start < 0 && pos + folded[i].length > at) start = i;
 		pos += folded[i].length;
 		if (start >= 0 && pos >= at + q.length) {
 			end = i + 1;
+			while (end < chars.length && !folded[end]) end++;
 			break;
 		}
 	}

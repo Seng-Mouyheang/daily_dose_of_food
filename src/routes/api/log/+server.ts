@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { z } from 'zod';
+import { MAX_QTY } from '#lib/log/schema.ts';
 import { DINING_OPTIONS, MEALS } from '#lib/log/visits.ts';
 import { requireUser } from '#lib/server/auth.ts';
 import { deleteLogs, restoreLogs } from '#lib/server/logs.ts';
@@ -20,8 +21,8 @@ const isoDay = z.string().refine((s) => {
 	);
 }, 'Not a real date');
 
-/** A row as DELETE handed it back. Checked so a bad body is a 400, not a database error; the
- *  owner and review link are never taken from it. */
+/** A row as DELETE handed it back. Checked so a bad body is a 400, not a database error. The
+ *  owner is never taken from it, and the review link only back to one of your own reviews. */
 const rowsSchema = z.object({
 	rows: z
 		.array(
@@ -36,7 +37,7 @@ const rowsSchema = z.object({
 					foodTypeId: lookupId,
 					drinkTypeId: lookupId,
 					cuisineTypeId: lookupId,
-					qty: z.number().int().min(1).max(99),
+					qty: z.number().int().min(1).max(MAX_QTY),
 					price: money,
 					taxPercent: percent.nullable(),
 					isFavorite: z.boolean(),
@@ -44,6 +45,7 @@ const rowsSchema = z.object({
 					visitType: z.enum(DINING_OPTIONS),
 					overallRating: z.number().int().min(1).max(5),
 					note: z.string().max(200).nullable(),
+					reviewId: z.uuid().nullable().default(null),
 					createdAt: z.coerce.date()
 				})
 				.refine((r) => r.placeId !== null || r.placeName !== null, 'A log needs a place')

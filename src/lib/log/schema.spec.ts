@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { logVisitSchema } from './schema.ts';
+import { logVisitSchema, MAX_QTY } from './schema.ts';
 
 const TODAY = '2026-10-16';
 const schema = logVisitSchema(TODAY);
@@ -47,6 +47,12 @@ describe('logVisitSchema', () => {
 		fails({ items: [{ ...valid.items[0], qty: 0 }] });
 		fails({ items: [{ ...valid.items[0], price: -1 }] });
 		fails({ items: [{ ...valid.items[0], title: ' ' }] });
+	});
+	it('takes up to MAX_QTY of one item, where the stepper stops', () => {
+		expect(
+			schema.safeParse({ ...valid, items: [{ ...valid.items[0], qty: MAX_QTY }] }).success
+		).toBe(true);
+		fails({ items: [{ ...valid.items[0], qty: MAX_QTY + 1 }] });
 	});
 	it('accepts a tax percentage but not a negative one', () => {
 		const item = { ...valid.items[0], taxPercent: 10, isFavorite: true };

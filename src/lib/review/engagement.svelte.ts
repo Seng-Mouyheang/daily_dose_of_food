@@ -80,36 +80,38 @@ export function createLike(read: () => { reviewId: string | null; liked: boolean
 	};
 }
 
-export function createSave(read: () => { reviewId: string | null; saved: boolean }) {
-	let saved = $derived(read().saved);
+/** An on/off toggle behind one endpoint (a bookmark, a follow): flips at once, then snaps to
+ *  the server's `field` or rolls back. No endpoint (a review not published yet) is a no-op. */
+function createToggle(read: () => { endpoint: string | null; on: boolean }, field: string) {
+	let on = $derived(read().on);
 	let pending = false;
-	// Same rule as the heart's popping: only a click that *adds* a save plays the animation.
+	// Same rule as the heart's popping: only a click that *turns it on* plays the animation.
 	let popping = $state(false);
 
 	async function toggle() {
-		const { reviewId } = read();
-		if (!reviewId || pending) return;
+		const { endpoint } = read();
+		if (!endpoint || pending) return;
 		pending = true;
-		const before = saved;
-		saved = !before;
-		popping = saved;
+		const before = on;
+		on = !before;
+		popping = on;
 
-		await toggleEngagement<{ saved: boolean }>(
-			`/api/reviews/${reviewId}/save`,
-			saved,
+		await toggleEngagement<Record<string, boolean>>(
+			endpoint,
+			on,
 			(settled) => {
-				if (settled) saved = settled.saved;
+				if (settled) on = settled[field];
 			},
 			() => {
-				saved = before;
+				on = before;
 			}
 		);
 		pending = false;
 	}
 
 	return {
-		get saved() {
-			return saved;
+		get on() {
+			return on;
 		},
 		get popping() {
 			return popping;
@@ -121,33 +123,14 @@ export function createSave(read: () => { reviewId: string | null; saved: boolean
 	};
 }
 
-export function createFollow(read: () => { userId: string; following: boolean }) {
-	let following = $derived(read().following);
-	let pending = false;
+export const createSave = (read: () => { reviewId: string | null; saved: boolean }) =>
+	createToggle(() => {
+		const { reviewId, saved } = read();
+		return { endpoint: reviewId && `/api/reviews/${reviewId}/save`, on: saved };
+	}, 'saved');
 
-	async function toggle() {
-		if (pending) return;
-		pending = true;
-		const before = following;
-		following = !before;
-
-		await toggleEngagement<{ following: boolean }>(
-			`/api/users/${read().userId}/follow`,
-			following,
-			(settled) => {
-				if (settled) following = settled.following;
-			},
-			() => {
-				following = before;
-			}
-		);
-		pending = false;
-	}
-
-	return {
-		get following() {
-			return following;
-		},
-		toggle
-	};
-}
+export const createFollow = (read: () => { userId: string; following: boolean }) =>
+	createToggle(() => {
+		const { userId, following } = read();
+		return { endpoint: `/api/users/${userId}/follow`, on: following };
+	}, 'following');

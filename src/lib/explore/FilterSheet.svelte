@@ -7,7 +7,6 @@
 	 *  Each choice is a link that replaces the URL without scrolling or moving focus: the grid
 	 *  behind updates live, and the sheet — the same element across the navigation — keeps its
 	 *  own scroll position. Closing just closes; there's nothing to apply. */
-	import type { Snippet } from 'svelte';
 	import FilterPill from '#lib/components/FilterPill.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import {
@@ -56,41 +55,76 @@
 		'data-sveltekit-reset': 'false'
 	} as const;
 
-	const PRICES = [0, 3, 5, 8, 12] as const;
-	const RATINGS = [0, 3, 4, 5] as const;
+	interface Option<V> {
+		value: V;
+		label: string;
+	}
+
+	/** One section of chips; each links to the filters as they'd be once it's picked. */
+	interface Section {
+		title: string;
+		choices: { label: string; to: ExploreFilters; on: boolean; check?: boolean }[];
+	}
+
+	/** Single choice: picking a value sets it. */
+	function one<K extends 'sort' | 'type' | 'maxPrice' | 'rating' | 'from'>(
+		title: string,
+		key: K,
+		options: Option<ExploreFilters[K]>[]
+	): Section {
+		const choices = options.map((o) => ({
+			label: o.label,
+			to: { ...filters, [key]: o.value },
+			on: filters[key] === o.value
+		}));
+		return { title, choices };
+	}
+
+	/** Multiple choice: picking a value toggles it, and a picked one shows a tick. */
+	function many(title: string, key: 'meals' | 'cuisines' | 'kinds', options: Option<string>[]) {
+		const choices = options.map((o) => {
+			const on = (filters[key] as string[]).includes(o.value);
+			return { label: o.label, to: toggleValue(filters, key, o.value as never), on, check: on };
+		});
+		return { title, choices };
+	}
+
+	const fromData = (f: ExploreFacet) => ({ value: f.slug, label: f.name });
 	const TYPES = [
 		{ value: 'any', label: 'Anything' },
 		{ value: 'food', label: 'Food' },
 		{ value: 'drink', label: 'Drinks' }
 	] as const;
+	const FROM = [
+		{ value: 'all', label: 'Everyone' },
+		{ value: 'following', label: 'People I follow' }
+	] as const;
+	const PRICES = ([0, 3, 5, 8, 12] as const).map((p) => ({ value: p, label: priceLabel(p) }));
+	const RATINGS = ([0, 3, 4, 5] as const).map((r) => ({ value: r, label: ratingLabel(r) }));
+
+	// Cuisine and "Dish or drink" come from the data, and hide when it has none.
+	const sections: Section[] = $derived(
+		[
+			one('Sort by', 'sort', SORTS),
+			many('Meal', 'meals', MEALS),
+			one('Food or drink', 'type', [...TYPES]),
+			many('Cuisine', 'cuisines', facets.cuisines.map(fromData)),
+			many('Dish or drink', 'kinds', facets.kinds.map(fromData)),
+			one('Price', 'maxPrice', PRICES),
+			one('Rating', 'rating', RATINGS),
+			one('From', 'from', [...FROM])
+		].filter((section) => section.choices.length)
+	);
 
 	const anySet = $derived(activeCount(filters) > 0 || filters.sort !== 'new');
 </script>
-
-{#snippet section(title: string, body: Snippet)}
-	<div class="flex flex-col gap-2">
-		<p class="text-xs font-bold tracking-[.06em] text-ink-3 uppercase">{title}</p>
-		<div class="flex flex-wrap gap-1.5">{@render body()}</div>
-	</div>
-{/snippet}
-
-{#snippet multi(key: 'meals' | 'cuisines' | 'kinds', value: string, label: string)}
-	{@const on = (filters[key] as string[]).includes(value)}
-	<FilterPill
-		href={hrefFor(toggleValue(filters, key, value as never))}
-		{label}
-		selected={on}
-		icon={on ? 'check' : undefined}
-		{...nav}
-	/>
-{/snippet}
 
 <dialog
 	bind:this={dialog}
 	{onclose}
 	onclick={(e) => e.target === dialog && onclose()}
 	aria-label="Filters"
-	class="sheet m-0 mt-auto w-full max-w-none bg-transparent p-0 lg:m-auto lg:w-[480px]"
+	class="sheet sheet-fade-lg m-0 mt-auto w-full max-w-none bg-transparent p-0 lg:m-auto lg:w-[480px]"
 >
 	<div
 		class="flex max-h-[86dvh] flex-col overflow-y-auto rounded-t-[20px] bg-surface px-4.5 pt-2 text-ink lg:max-h-[calc(100dvh-48px)] lg:rounded-[18px] lg:px-5.5 lg:pt-5"
@@ -118,96 +152,32 @@
 		</div>
 
 		<div class="mt-3.5 flex flex-col gap-3.5">
-			{#snippet sorts()}
-				{#each SORTS as s (s.value)}
-					<FilterPill
-						href={hrefFor({ ...filters, sort: s.value })}
-						label={s.label}
-						selected={filters.sort === s.value}
-						{...nav}
-					/>
-				{/each}
-			{/snippet}
-			{@render section('Sort by', sorts)}
-
-			{#snippet meals()}
-				{#each MEALS as m (m.value)}{@render multi('meals', m.value, m.label)}{/each}
-			{/snippet}
-			{@render section('Meal', meals)}
-
-			{#snippet types()}
-				{#each TYPES as t (t.value)}
-					<FilterPill
-						href={hrefFor({ ...filters, type: t.value })}
-						label={t.label}
-						selected={filters.type === t.value}
-						{...nav}
-					/>
-				{/each}
-			{/snippet}
-			{@render section('Food or drink', types)}
-
-			{#if facets.cuisines.length}
-				{#snippet cuisines()}
-					{#each facets.cuisines as c (c.slug)}{@render multi('cuisines', c.slug, c.name)}{/each}
-				{/snippet}
-				{@render section('Cuisine', cuisines)}
-			{/if}
-
-			{#if facets.kinds.length}
-				{#snippet kinds()}
-					{#each facets.kinds as k (k.slug)}{@render multi('kinds', k.slug, k.name)}{/each}
-				{/snippet}
-				{@render section('Dish or drink', kinds)}
-			{/if}
-
-			{#snippet prices()}
-				{#each PRICES as p (p)}
-					<FilterPill
-						href={hrefFor({ ...filters, maxPrice: p })}
-						label={priceLabel(p)}
-						selected={filters.maxPrice === p}
-						{...nav}
-					/>
-				{/each}
-			{/snippet}
-			{@render section('Price', prices)}
-
-			{#snippet ratings()}
-				{#each RATINGS as r (r)}
-					<FilterPill
-						href={hrefFor({ ...filters, rating: r })}
-						label={ratingLabel(r)}
-						selected={filters.rating === r}
-						{...nav}
-					/>
-				{/each}
-			{/snippet}
-			{@render section('Rating', ratings)}
-
-			{#snippet from()}
-				<FilterPill
-					href={hrefFor({ ...filters, from: 'all' })}
-					label="Everyone"
-					selected={filters.from === 'all'}
-					{...nav}
-				/>
-				<FilterPill
-					href={hrefFor({ ...filters, from: 'following' })}
-					label="People I follow"
-					selected={filters.from === 'following'}
-					{...nav}
-				/>
-				<span class="mx-1 w-px self-stretch bg-line" aria-hidden="true"></span>
-				<FilterPill
-					href={hrefFor({ ...filters, photos: !filters.photos })}
-					label="Has photos"
-					selected={filters.photos}
-					icon="camera"
-					{...nav}
-				/>
-			{/snippet}
-			{@render section('From', from)}
+			{#each sections as { title, choices } (title)}
+				<div class="flex flex-col gap-2">
+					<p class="text-xs font-bold tracking-[.06em] text-ink-3 uppercase">{title}</p>
+					<div class="flex flex-wrap gap-x-1.5 gap-y-2">
+						{#each choices as c (c.label)}
+							<FilterPill
+								href={hrefFor(c.to)}
+								label={c.label}
+								selected={c.on}
+								icon={c.check ? 'check' : undefined}
+								{...nav}
+							/>
+						{/each}
+						{#if title === 'From'}
+							<span class="mx-1 w-px self-stretch bg-line" aria-hidden="true"></span>
+							<FilterPill
+								href={hrefFor({ ...filters, photos: !filters.photos })}
+								label="Has photos"
+								selected={filters.photos}
+								icon="camera"
+								{...nav}
+							/>
+						{/if}
+					</div>
+				</div>
+			{/each}
 		</div>
 
 		<!-- Sticky, so Reset and the result count stay in reach while the sections scroll. -->
@@ -239,32 +209,3 @@
 		</div>
 	</div>
 </dialog>
-
-<style>
-	.sheet::backdrop {
-		background: var(--scrim);
-	}
-	.sheet[open] > div {
-		animation: sheet-up 0.22s ease;
-	}
-	@keyframes sheet-up {
-		from {
-			transform: translateY(100%);
-		}
-	}
-	@media (min-width: 64rem) {
-		.sheet[open] > div {
-			animation: sheet-fade 0.15s ease;
-		}
-	}
-	@keyframes sheet-fade {
-		from {
-			opacity: 0;
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.sheet[open] > div {
-			animation: none;
-		}
-	}
-</style>

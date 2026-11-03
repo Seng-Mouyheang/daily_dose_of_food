@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, type Snippet } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import FilterPill from '#lib/components/FilterPill.svelte';
@@ -20,7 +20,12 @@
 		removableChips,
 		toggleQuickChip
 	} from '#lib/explore/explore.ts';
-	import { normalizeQuery, searchActive } from '#lib/explore/search.ts';
+	import {
+		normalizeQuery,
+		type PersonResult,
+		type PlaceResult,
+		searchActive
+	} from '#lib/explore/search.ts';
 	import { timeAgo } from '#lib/review/format.ts';
 	import type { PageProps } from './$types';
 
@@ -95,7 +100,7 @@
 	const anyFilter = $derived(filterCount > 0 || data.filters.sort !== 'new');
 
 	const clearClass =
-		'shrink-0 rounded-lg px-1.5 py-1 text-sm font-semibold whitespace-nowrap text-accent-strong hover:bg-accent-soft';
+		'tap-target shrink-0 rounded-lg px-1.5 py-1 text-sm font-semibold whitespace-nowrap text-accent-strong hover:bg-accent-soft';
 
 	/* --------------------------------------- results --------------------------------------- */
 
@@ -105,24 +110,16 @@
 	const tabs = $derived(
 		search
 			? [
-					{ value: 'all', label: 'All', href: tabHref('all') },
-					{ value: 'food', label: 'Food', href: tabHref('food'), count: search.foodCount },
-					{
-						value: 'people',
-						label: 'People',
-						href: tabHref('people'),
-						count: search.people.length
-					},
-					{
-						value: 'places',
-						label: 'Places',
-						href: tabHref('places'),
-						count: search.places.length
-					}
-				]
+					{ value: 'all', label: 'All' },
+					{ value: 'food', label: 'Food', count: search.foodCount },
+					{ value: 'people', label: 'People', count: search.people.length },
+					{ value: 'places', label: 'Places', count: search.places.length }
+				].map((t) => ({ ...t, href: tabHref(t.value) }))
 			: []
 	);
 	const suggestionHref = (s: string) => exploreUrl(EMPTY_FILTERS, { q: s });
+	const panelClass =
+		'flex flex-col rounded-card border border-line bg-surface px-3 py-1.5 lg:px-3.5 lg:py-2';
 
 	// The review page's back link returns to this exact view: search, tab, filters and page.
 	const from = $derived(encodeURIComponent(page.url.pathname + page.url.search));
@@ -142,51 +139,54 @@
 </svelte:head>
 
 {#snippet filterRow()}
-	<!-- One row that scrolls sideways on a phone, bleeding to the screen edges; wraps on desktop. -->
-	<nav
-		aria-label="Filter"
-		class="-mx-4 flex scrollbar-none gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
-	>
-		<button
-			type="button"
-			aria-haspopup="dialog"
-			onclick={() => (filtersOpen = true)}
-			class="inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border bg-surface px-2.5 text-[13px] whitespace-nowrap transition-colors hover:border-ink-3 {filterCount
-				? 'border-ink-3 font-semibold text-ink'
-				: 'border-line font-medium text-ink-2'}"
+	<!-- Each row scrolls sideways on a phone, bleeding to the screen edges, and wraps on desktop;
+	     `tap-row` keeps the pills' 44px tap areas from being clipped while it scrolls. -->
+	<div class="flex flex-col gap-2 lg:gap-2.5">
+		<nav
+			aria-label="Filter"
+			class="-mx-4 tap-row flex scrollbar-none gap-x-1.5 gap-y-2 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
 		>
-			<Icon name="sort" size={14} />Filters
-			{#if filterCount}
-				<span
-					class="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent"
-					>{filterCount}</span
-				>
-			{/if}
-		</button>
-		<span class="mx-0.5 my-1 w-px shrink-0 self-stretch bg-line" aria-hidden="true"></span>
-		{#each QUICK_CHIPS as chip (chip.label)}
-			<FilterPill
-				href={href(toggleQuickChip(data.filters, chip))}
-				label={chip.label}
-				selected={quickChipOn(data.filters, chip)}
-			/>
-		{/each}
-		<!-- With only quick chips on there is no removable row to hold it, so it ends this one. -->
-		{#if anyFilter && !removable.length}
-			<a href={href(EMPTY_FILTERS)} class={clearClass}>Clear all</a>
-		{/if}
-	</nav>
-
-	{#if removable.length}
-		<div
-			class="-mx-4 -mt-1 flex scrollbar-none items-center gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:mt-[-8px] lg:flex-wrap lg:overflow-visible lg:px-0"
-		>
-			{#each removable as chip (chip.label)}
-				<FilterPill href={href(chip.without)} label={chip.label} removable />
+			<button
+				type="button"
+				aria-haspopup="dialog"
+				onclick={() => (filtersOpen = true)}
+				class="tap-target inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border bg-surface px-2.5 text-[13px] whitespace-nowrap transition-colors hover:border-ink-3 {filterCount
+					? 'border-ink-3 font-semibold text-ink'
+					: 'border-line font-medium text-ink-2'}"
+			>
+				<Icon name="sort" size={14} />Filters
+				{#if filterCount}
+					<span
+						class="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent"
+						>{filterCount}</span
+					>
+				{/if}
+			</button>
+			<span class="mx-0.5 my-1 w-px shrink-0 self-stretch bg-line" aria-hidden="true"></span>
+			{#each QUICK_CHIPS as chip (chip.label)}
+				<FilterPill
+					href={href(toggleQuickChip(data.filters, chip))}
+					label={chip.label}
+					selected={quickChipOn(data.filters, chip)}
+				/>
 			{/each}
-			<a href={href(EMPTY_FILTERS)} class="{clearClass} text-[13px]">Clear all</a>
-		</div>
-	{/if}
+			<!-- With only quick chips on there is no removable row to hold it, so it ends this one. -->
+			{#if anyFilter && !removable.length}
+				<a href={href(EMPTY_FILTERS)} class={clearClass}>Clear all</a>
+			{/if}
+		</nav>
+
+		{#if removable.length}
+			<div
+				class="-mx-4 tap-row flex scrollbar-none items-center gap-x-1.5 gap-y-2 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
+			>
+				{#each removable as chip (chip.label)}
+					<FilterPill href={href(chip.without)} label={chip.label} removable />
+				{/each}
+				<a href={href(EMPTY_FILTERS)} class="{clearClass} text-[13px]">Clear all</a>
+			</div>
+		{/if}
+	</div>
 {/snippet}
 
 {#snippet grid(limit: number = Infinity)}
@@ -232,24 +232,35 @@
 	{/if}
 {/snippet}
 
-{#snippet section(title: string, more: { tab: string; label: string } | null)}
+<!-- A results section's heading, with "See all N ›" into its tab when the section shows fewer than
+     all `total`: `shown` of them, or `shownLg` on desktop (Food shows 4 on a phone, 6 there). -->
+{#snippet section(title: string, tab: string, total: number, shown: number, shownLg = shown)}
 	<div class="flex min-h-8 items-center justify-between gap-2.5">
 		<h3 class="font-display text-lg font-semibold text-ink">{title}</h3>
-		{#if more}
-			<a
-				href={tabHref(more.tab)}
-				class="inline-flex items-center gap-1 rounded-lg px-1 py-1.5 text-[13.5px] font-semibold text-accent-strong hover:bg-accent-soft"
-				>{more.label}<Icon name="chevR" size={15} weight={2.4} /></a
-			>
-		{/if}
+		<a
+			href={tabHref(tab)}
+			class="items-center gap-1 rounded-lg px-1 py-1.5 text-[13.5px] font-semibold text-accent-strong hover:bg-accent-soft {total >
+			shown
+				? 'inline-flex'
+				: 'hidden'} {total > shownLg ? 'lg:inline-flex' : 'lg:hidden'}"
+			>See all {total}<Icon name="chevR" size={15} weight={2.4} /></a
+		>
 	</div>
 {/snippet}
 
-{#snippet panel(children: Snippet)}
-	<div
-		class="flex flex-col rounded-card border border-line bg-surface px-3 py-1.5 lg:px-3.5 lg:py-2"
-	>
-		{@render children()}
+{#snippet peopleRows(people: PersonResult[])}
+	<div class={panelClass}>
+		{#each people as person (person.id)}
+			<PersonRow {person} {q} signedIn={data.signedIn} />
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet placeRows(places: PlaceResult[], query: string)}
+	<div class={panelClass}>
+		{#each places as place (place.id)}
+			<PlaceRow {place} {q} {query} />
+		{/each}
 	</div>
 {/snippet}
 
@@ -326,23 +337,13 @@
 			{/if}
 		{:else if search.tab === 'people'}
 			{#if search.people.length}
-				{#snippet people()}
-					{#each search.people as person (person.id)}
-						<PersonRow {person} {q} signedIn={data.signedIn} />
-					{/each}
-				{/snippet}
-				{@render panel(people)}
+				{@render peopleRows(search.people)}
 			{:else}
 				<SearchEmpty what="people" query={search.q} hrefFor={suggestionHref} />
 			{/if}
 		{:else if search.tab === 'places'}
 			{#if search.places.length}
-				{#snippet placeList()}
-					{#each search.places as place (place.id)}
-						<PlaceRow {place} {q} query={search.q} />
-					{/each}
-				{/snippet}
-				{@render panel(placeList)}
+				{@render placeRows(search.places, search.q)}
 			{:else}
 				<SearchEmpty what="places" query={search.q} hrefFor={suggestionHref} />
 			{/if}
@@ -354,52 +355,21 @@
 				<div class="grid gap-4.5 lg:grid-cols-[repeat(auto-fit,minmax(340px,1fr))]">
 					{#if search.people.length}
 						<section class="flex flex-col gap-1.5">
-							{@render section(
-								'People',
-								search.people.length > 3
-									? { tab: 'people', label: `See all ${search.people.length}` }
-									: null
-							)}
-							{#snippet topPeople()}
-								{#each search.people.slice(0, 3) as person (person.id)}
-									<PersonRow {person} {q} signedIn={data.signedIn} />
-								{/each}
-							{/snippet}
-							{@render panel(topPeople)}
+							{@render section('People', 'people', search.people.length, 3)}
+							{@render peopleRows(search.people.slice(0, 3))}
 						</section>
 					{/if}
 					{#if search.places.length}
 						<section class="flex flex-col gap-1.5">
-							{@render section(
-								'Places',
-								search.places.length > 3
-									? { tab: 'places', label: `See all ${search.places.length}` }
-									: null
-							)}
-							{#snippet topPlaces()}
-								{#each search.places.slice(0, 3) as place (place.id)}
-									<PlaceRow {place} {q} query={search.q} />
-								{/each}
-							{/snippet}
-							{@render panel(topPlaces)}
+							{@render section('Places', 'places', search.places.length, 3)}
+							{@render placeRows(search.places.slice(0, 3), search.q)}
 						</section>
 					{/if}
 				</div>
 			{/if}
 			{#if search.foodCount}
 				<section class="flex flex-col gap-1.5">
-					<!-- "See all" only when there's more than this screen shows: 4 on a phone, 6 on desktop. -->
-					<div class="flex min-h-8 items-center justify-between gap-2.5">
-						<h3 class="font-display text-lg font-semibold text-ink">Food</h3>
-						<a
-							href={tabHref('food')}
-							class="items-center gap-1 rounded-lg px-1 py-1.5 text-[13.5px] font-semibold text-accent-strong hover:bg-accent-soft {search.foodCount >
-							4
-								? 'inline-flex'
-								: 'hidden'} {search.foodCount > 6 ? 'lg:inline-flex' : 'lg:hidden'}"
-							>See all {search.foodCount}<Icon name="chevR" size={15} weight={2.4} /></a
-						>
-					</div>
+					{@render section('Food', 'food', search.foodCount, 4, 6)}
 					{@render grid(6)}
 				</section>
 			{/if}
