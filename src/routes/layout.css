@@ -18,6 +18,7 @@
 	--surface: #ffffff;
 	--sunken: #f4eee4;
 	--line: #e7ded0;
+	--line-2: #dcd0be;
 	--ink: #2a2019;
 	--ink-2: #6a5b4e;
 	--ink-3: #9b8c7d;
@@ -59,6 +60,7 @@
 	--surface: #211a14;
 	--sunken: #2a221b;
 	--line: #3a3027;
+	--line-2: #4a3d31;
 	--ink: #f4ece1;
 	--ink-2: #c6b7a6;
 	--ink-3: #8f8172;
@@ -88,6 +90,7 @@
 		--surface: #211a14;
 		--sunken: #2a221b;
 		--line: #3a3027;
+		--line-2: #4a3d31;
 		--ink: #f4ece1;
 		--ink-2: #c6b7a6;
 		--ink-3: #8f8172;
@@ -133,6 +136,7 @@
 	--color-surface: var(--surface);
 	--color-sunken: var(--sunken);
 	--color-line: var(--line);
+	--color-line-2: var(--line-2);
 	--color-ink: var(--ink);
 	--color-ink-2: var(--ink-2);
 	--color-ink-3: var(--ink-3);

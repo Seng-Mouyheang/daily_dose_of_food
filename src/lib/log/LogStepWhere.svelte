@@ -215,7 +215,7 @@
 									? 'Drink'
 									: 'Food'}. Switch to {item.itemType === 'drink' ? 'food' : 'drink'}"
 								title="Food or drink? Tap to switch"
-								class="ring-line-2 grid h-10 w-10 flex-none place-items-center rounded-[11px] bg-sunken text-ink-3 ring-[1.5px] ring-inset hover:text-ink-2"
+								class="grid h-10 w-10 flex-none place-items-center rounded-[11px] bg-sunken text-ink-3 ring-[1.5px] ring-line-2 ring-inset hover:text-ink-2"
 							>
 								<Icon
 									name={item.itemType === 'drink' ? 'coffee' : 'plate'}

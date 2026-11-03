@@ -94,8 +94,28 @@ export async function countFood(q: string): Promise<number> {
  * a deleted account. A name or username starting with the query ranks first, then more followers.
  */
 export async function searchPeople(q: string, viewerId: string | null): Promise<PersonResult[]> {
-	const reviewCount = sql<number>`(select count(*)::int from ${reviews} where ${reviews.userId} = ${users.id} and ${reviews.visibility} = 'public' and ${reviews.reviewStatus} = 'published' and ${reviews.deletedAt} is null and ${reviews.archivedAt} is null)`;
-	const followers = sql<number>`(select count(*)::int from ${follows} where ${follows.followeeId} = ${users.id})`;
+	// Counts as grouped subqueries joined in, not correlated subqueries in the select: drizzle
+	// leaves column names unqualified in a query with no joins, so a correlated `users.id` would
+	// silently bind to the subquery's own table.
+	const reviewCounts = db
+		.select({ userId: reviews.userId, n: count().as('review_n') })
+		.from(reviews)
+		.innerJoin(users, eq(reviews.userId, users.id))
+		.where(listedReview)
+		.groupBy(reviews.userId)
+		.as('review_counts');
+	const followerCounts = db
+		.select({ userId: follows.followeeId, n: count().as('follower_n') })
+		.from(follows)
+		.groupBy(follows.followeeId)
+		.as('follower_counts');
+	const viewerFollows = db
+		.select({ userId: follows.followeeId })
+		.from(follows)
+		.where(eq(follows.followerId, viewerId ?? NOBODY_ID))
+		.as('viewer_follows');
+
+	const followers = sql<number>`coalesce(${followerCounts.n}, 0)::int`;
 	const prefix = or(startsWith(users.displayName, q), startsWith(users.username, q));
 
 	const rows = await db
@@ -105,18 +125,14 @@ export async function searchPeople(q: string, viewerId: string | null): Promise<
 			username: users.username,
 			avatarUrl: users.avatarUrl,
 			bio: users.bio,
-			reviewCount,
+			reviewCount: sql<number>`coalesce(${reviewCounts.n}, 0)::int`,
 			followers,
-			youFollow: exists(
-				db
-					.select({ one: sql`1` })
-					.from(follows)
-					.where(
-						and(eq(follows.followerId, viewerId ?? NOBODY_ID), eq(follows.followeeId, users.id))
-					)
-			)
+			youFollow: sql<boolean>`${viewerFollows.userId} is not null`
 		})
 		.from(users)
+		.leftJoin(reviewCounts, eq(reviewCounts.userId, users.id))
+		.leftJoin(followerCounts, eq(followerCounts.userId, users.id))
+		.leftJoin(viewerFollows, eq(viewerFollows.userId, users.id))
 		.where(
 			and(
 				isNull(users.deletedAt),

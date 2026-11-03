@@ -188,7 +188,7 @@
 								class="group flex min-h-9 items-center gap-2.5 text-[13.5px] font-medium text-ink-3 transition-colors hover:text-ink"
 							>
 								<span
-									class="border-line-2 grid h-6 w-6 place-items-center rounded-[8px] border border-dashed transition-colors group-hover:border-ink-2"
+									class="grid h-6 w-6 place-items-center rounded-[8px] border border-dashed border-line-2 transition-colors group-hover:border-ink-2"
 								>
 									<Icon name="plus" size={14} weight={2} />
 								</span>

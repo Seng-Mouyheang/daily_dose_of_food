@@ -829,6 +829,59 @@ function exploreFilterWhere(f: ExploreFilters, viewerId: string | null): SQL | u
 	);
 }
 
+/* ------------------------------------- place page ------------------------------------- */
+
+export interface PlacePage {
+	place: {
+		id: string;
+		name: string;
+		address: string | null;
+		/** For Directions; null if the stored point can't be read. */
+		lat: number | null;
+		lng: number | null;
+	};
+	/** Every listed review here, newest first. */
+	reviews: FeedPage['reviews'];
+}
+
+/** A place has a handful of reviews, so they all come at once and the page filters and sorts
+ *  them on the client. Capped anyway, so a very popular place can't make one huge response. */
+const PLACE_REVIEW_LIMIT = 200;
+
+/** A place and its public reviews, or null for no such (live) place. */
+export async function getPlacePage(
+	placeId: string,
+	viewerId: string | null
+): Promise<PlacePage | null> {
+	const [[place], spine] = await db.batch([
+		db
+			.select({
+				id: places.id,
+				name: places.name,
+				address: sql<
+					string | null
+				>`nullif(concat_ws(', ', ${places.addressLine1}, ${places.city}), '')`,
+				lat: sql<number | null>`st_y(${places.location}::geometry)`,
+				lng: sql<number | null>`st_x(${places.location}::geometry)`
+			})
+			.from(places)
+			.where(and(eq(places.id, placeId), isNull(places.deletedAt)))
+			.limit(1),
+
+		db
+			.select(spineColumns)
+			.from(reviews)
+			.innerJoin(users, eq(reviews.userId, users.id))
+			.innerJoin(places, eq(reviews.placeId, places.id))
+			.where(and(listedReview, eq(reviews.placeId, placeId)))
+			.orderBy(desc(reviews.publishedAt), desc(reviews.id))
+			.limit(PLACE_REVIEW_LIMIT)
+	]);
+
+	if (!place) return null;
+	return { place, reviews: await toFeedReviews(spine, viewerId) };
+}
+
 /** A review's comments: top-level threads first (pinned, then newest), then their replies newest
  *  first. The author join also drops comments by a since-deleted user, for the same reason the
  *  feed drops their reviews. Paged by thread, not by row: at most 200 top-level comments, with
