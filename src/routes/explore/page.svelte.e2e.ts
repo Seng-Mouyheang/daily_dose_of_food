@@ -57,6 +57,31 @@ test('panel-only filters show as removable chips, and Clear all drops everything
 	await expect(selected(page)).toHaveCount(0);
 });
 
+test('the Filters panel updates the grid live and agrees with the quick chips', async ({
+	page
+}) => {
+	await page.goto('/explore');
+	await filters(page).getByRole('button', { name: 'Filters' }).click();
+	const panel = page.getByRole('dialog', { name: 'Filters' });
+	await expect(panel).toBeVisible();
+
+	// A quick chip's value picked in the panel: same URL, and the row shows it as on.
+	await panel.getByRole('link', { name: 'Lunch' }).click();
+	await expect(page).toHaveURL(/\/explore\?meal=lunch$/);
+	await panel.getByRole('link', { name: 'Up to $5' }).click();
+	await expect(page).toHaveURL(/\/explore\?meal=lunch&max=5$/);
+	await expect(panel).toBeVisible();
+	await expect(
+		panel.getByRole('button', { name: /^Show \d+ reviews?$|^No reviews match$/ })
+	).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(panel).toBeHidden();
+	await expect(selected(page)).toHaveText(['Lunch']);
+	await expect(filters(page).getByRole('button', { name: 'Filters 2' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Remove: Up to $5' })).toBeVisible();
+});
+
 test('hand-edited filters or a cursor fall back instead of failing', async ({ page }) => {
 	for (const query of [
 		'?meal=brunch&max=7',

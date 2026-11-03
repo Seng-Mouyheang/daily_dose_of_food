@@ -3,6 +3,7 @@
 	import FilterPill from '#lib/components/FilterPill.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import ExploreCard from '#lib/explore/ExploreCard.svelte';
+	import FilterSheet from '#lib/explore/FilterSheet.svelte';
 	import {
 		activeCount,
 		EMPTY_FILTERS,
@@ -17,6 +18,9 @@
 
 	let { data }: PageProps = $props();
 
+	let filtersOpen = $state(false);
+	const filterCount = $derived(activeCount(data.filters));
+
 	// Filters set in the panel that no quick chip shows, named from the panel's facet lists.
 	const removable = $derived.by(() => {
 		const names = new Map(
@@ -25,7 +29,7 @@
 		return removableChips(data.filters, (slug) => names.get(slug) ?? slug);
 	});
 	// Clearing drops the sort too: it is one of the removable chips "Clear all" stands for.
-	const anyFilter = $derived(activeCount(data.filters) > 0 || data.filters.sort !== 'new');
+	const anyFilter = $derived(filterCount > 0 || data.filters.sort !== 'new');
 	const clearHref = exploreUrl(EMPTY_FILTERS);
 
 	// The review page's back link returns to this exact grid: filter and page.
@@ -87,6 +91,23 @@
 			aria-label="Filter"
 			class="-mx-4 flex scrollbar-none gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
 		>
+			<button
+				type="button"
+				aria-haspopup="dialog"
+				onclick={() => (filtersOpen = true)}
+				class="inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border bg-surface px-2.5 text-[13px] whitespace-nowrap transition-colors hover:border-ink-3 {filterCount
+					? 'border-ink-3 font-semibold text-ink'
+					: 'border-line font-medium text-ink-2'}"
+			>
+				<Icon name="sort" size={14} />Filters
+				{#if filterCount}
+					<span
+						class="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold text-on-accent"
+						>{filterCount}</span
+					>
+				{/if}
+			</button>
+			<span class="mx-0.5 my-1 w-px shrink-0 self-stretch bg-line" aria-hidden="true"></span>
 			{#each QUICK_CHIPS as chip (chip.label)}
 				<FilterPill
 					href={exploreUrl(toggleQuickChip(data.filters, chip))}
@@ -149,3 +170,12 @@
 		<p class="p-6 text-center text-[13px] text-ink-3 lg:p-0">No public reviews yet.</p>
 	{/if}
 </main>
+
+<FilterSheet
+	open={filtersOpen}
+	filters={data.filters}
+	facets={data.facets}
+	matchCount={data.matchCount}
+	hrefFor={(filters) => exploreUrl(filters)}
+	onclose={() => (filtersOpen = false)}
+/>

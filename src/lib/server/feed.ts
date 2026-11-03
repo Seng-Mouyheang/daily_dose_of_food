@@ -44,7 +44,7 @@ import type {
 	ReviewComment,
 	Visibility
 } from '#lib/review/card.ts';
-import type { ExploreFilters, ExploreSort } from '#lib/explore/explore.ts';
+import type { ExploreFacet, ExploreFilters, ExploreSort } from '#lib/explore/explore.ts';
 import type { MonthItemRow, MonthlyStats, MonthReviewRow } from '#lib/review/stats.ts';
 import { summarizeMonth } from '#lib/review/stats.ts';
 import { z } from 'zod';
@@ -605,14 +605,6 @@ export async function getForYouFeed(
 }
 
 /* -------------------------------------- Explore -------------------------------------- */
-
-/** One choice in the Filters panel's Cuisine or "Dish or drink" section. */
-export interface ExploreFacet {
-	slug: string;
-	name: string;
-	/** Public reviews using it; the panel lists the most used first. */
-	count: number;
-}
 
 export interface ExplorePage {
 	reviews: FeedPage['reviews'];

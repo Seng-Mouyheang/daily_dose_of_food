@@ -45,6 +45,14 @@ export const EMPTY_FILTERS: ExploreFilters = {
 	photos: false
 };
 
+/** One choice in the Filters panel's Cuisine or "Dish or drink" section. */
+export interface ExploreFacet {
+	slug: string;
+	name: string;
+	/** Public reviews using it; the panel lists the most used first. */
+	count: number;
+}
+
 export const MEALS: { value: Meal; label: string }[] = [
 	{ value: 'breakfast', label: 'Breakfast' },
 	{ value: 'lunch', label: 'Lunch' },
