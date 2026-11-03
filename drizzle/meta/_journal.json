@@ -78,6 +78,13 @@
       "when": 1793117340821,
       "tag": "0010_log_tax_favorite",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793703793735,
+      "tag": "0011_follows",
+      "breakpoints": true
     }
   ]
 }

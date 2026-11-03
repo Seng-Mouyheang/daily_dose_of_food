@@ -1,7 +1,7 @@
 import { invalidate } from '$app/navigation';
 
 /** The optimistic like and save toggles behind every review card (the feed's action row and the
- *  Explore grid's footer). Each flips immediately, then snaps to whatever the server says it
+ *  Explore grid's footer), and the Follow button on Explore's people rows. Each flips immediately, then snaps to whatever the server says it
  *  settled on, and rolls back if the request fails.
  *
  *  Both take a getter rather than values, so the state follows the card's props: a writable
@@ -116,6 +116,37 @@ export function createSave(read: () => { reviewId: string | null; saved: boolean
 		},
 		set popping(value: boolean) {
 			popping = value;
+		},
+		toggle
+	};
+}
+
+export function createFollow(read: () => { userId: string; following: boolean }) {
+	let following = $derived(read().following);
+	let pending = false;
+
+	async function toggle() {
+		if (pending) return;
+		pending = true;
+		const before = following;
+		following = !before;
+
+		await toggleEngagement<{ following: boolean }>(
+			`/api/users/${read().userId}/follow`,
+			following,
+			(settled) => {
+				if (settled) following = settled.following;
+			},
+			() => {
+				following = before;
+			}
+		);
+		pending = false;
+	}
+
+	return {
+		get following() {
+			return following;
 		},
 		toggle
 	};

@@ -111,3 +111,24 @@ export const reviewCommentLikes = pgTable(
 	},
 	(t) => [primaryKey({ columns: [t.commentId, t.userId] })]
 );
+
+/** One row per (follower, followee). Public in aggregate (follower counts) and drives Explore's
+ *  "People I follow". The composite key makes following twice impossible, like a like; the check
+ *  rules out following yourself. Users are soft-deleted, so `restrict` as on likes. */
+export const follows = pgTable(
+	'follows',
+	{
+		followerId: uuid('follower_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'restrict' }),
+		followeeId: uuid('followee_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'restrict' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+	},
+	(t) => [
+		primaryKey({ columns: [t.followerId, t.followeeId] }),
+		index('idx_follows_followee').on(t.followeeId),
+		check('chk_follows_not_self', sql`${t.followerId} <> ${t.followeeId}`)
+	]
+);

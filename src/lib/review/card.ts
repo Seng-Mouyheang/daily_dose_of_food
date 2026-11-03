@@ -280,6 +280,8 @@ export interface FeedReview {
 	/** Always false for a signed-out viewer. */
 	viewerHasLiked: boolean;
 	viewerHasSaved: boolean;
+	/** Explore's "People I follow" and the place page's follow toggle. */
+	viewerFollowsAuthor: boolean;
 }
 
 export interface ReviewComment {

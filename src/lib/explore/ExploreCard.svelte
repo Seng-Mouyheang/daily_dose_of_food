@@ -79,7 +79,7 @@
 				“{view.description}”
 			</p>
 		{:else}
-			<!-- Nothing to quote: the watermark alone, centred, rather than an empty tile. -->
+			<!-- Nothing to quote: the watermark alone, centered, rather than an empty tile. -->
 			<span class="absolute inset-0 flex items-center justify-center text-ink opacity-[.12]">
 				<Icon
 					name={tileIcon(view.itemTypeLabel)}

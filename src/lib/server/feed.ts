@@ -53,6 +53,7 @@ import { db } from './db/index.ts';
 import {
 	cuisineTypes,
 	drinkItemDetails,
+	follows,
 	drinkTypes,
 	foodItemDetails,
 	foodTypes,
@@ -232,6 +233,8 @@ export interface Children {
 	likedByViewer: Set<string>;
 	/** Review ids the viewer has saved; empty when signed out. */
 	savedByViewer: Set<string>;
+	/** Review ids whose author the viewer follows; empty when signed out. */
+	authorFollowedByViewer: Set<string>;
 }
 
 // No real row ever has this id (the nil UUID; `defaultRandom()` draws from v4, which can't
@@ -255,7 +258,7 @@ function viewerRowIds(
 }
 
 /**
- * Everything that hangs off a set of reviews, in one batch — nine queries, one round trip,
+ * Everything that hangs off a set of reviews, in one batch — ten queries, one round trip,
  * regardless of how many reviews are in `reviewIds`.
  *
  * The feed only strictly needs photos, items and tags; the per-category ratings are the review
@@ -277,7 +280,8 @@ export async function getReviewChildren(
 			likeCounts: new Map(),
 			commentCounts: new Map(),
 			likedByViewer: new Set(),
-			savedByViewer: new Set()
+			savedByViewer: new Set(),
+			authorFollowedByViewer: new Set()
 		};
 	}
 
@@ -290,7 +294,8 @@ export async function getReviewChildren(
 		likeCountRows,
 		commentCountRows,
 		likedRows,
-		savedRows
+		savedRows,
+		followedRows
 	] = await db.batch([
 		// A media row can be soft-deleted by the orphan cleanup job (photoCleanup.ts) after the
 		// review is published, so filter on the file's own status rather than trusting the join.
@@ -402,7 +407,7 @@ export async function getReviewChildren(
 			.groupBy(reviewComments.reviewId),
 
 		// The viewer's own likes and saves depend on who is looking; they ride in the same
-		// batch as everything above (one round trip for all nine queries) rather than a
+		// batch as everything above (one round trip for all ten queries) rather than a
 		// separate await — `viewerRowIds` keeps that correct for a signed-out viewer too.
 		viewerRowIds(reviewLikes, reviewLikes.reviewId, reviewLikes.userId, {
 			viewerId,
@@ -411,7 +416,15 @@ export async function getReviewChildren(
 		viewerRowIds(reviewSaves, reviewSaves.reviewId, reviewSaves.userId, {
 			viewerId,
 			reviewIds
-		})
+		}),
+
+		// Keyed by review rather than author so it stitches like the rest: the reviews in this
+		// batch whose author the viewer follows.
+		db
+			.select({ reviewId: reviews.id })
+			.from(reviews)
+			.innerJoin(follows, eq(follows.followeeId, reviews.userId))
+			.where(and(eq(follows.followerId, viewerId ?? NOBODY_ID), inArray(reviews.id, reviewIds)))
 	]);
 
 	const foodTypeByItem = groupBy(
@@ -465,7 +478,8 @@ export async function getReviewChildren(
 		likeCounts: new Map(likeCountRows.map((r) => [r.reviewId, r.n])),
 		commentCounts: new Map(commentCountRows.map((r) => [r.reviewId, r.n])),
 		likedByViewer: new Set(likedRows.map((r) => r.reviewId)),
-		savedByViewer: new Set(savedRows.map((r) => r.reviewId))
+		savedByViewer: new Set(savedRows.map((r) => r.reviewId)),
+		authorFollowedByViewer: new Set(followedRows.map((r) => r.reviewId))
 	};
 }
 
@@ -502,7 +516,8 @@ export function assembleReview(row: SpineRow, children: Children): FeedReview {
 		likeCount: children.likeCounts.get(row.id) ?? 0,
 		commentCount: children.commentCounts.get(row.id) ?? 0,
 		viewerHasLiked: children.likedByViewer.has(row.id),
-		viewerHasSaved: children.savedByViewer.has(row.id)
+		viewerHasSaved: children.savedByViewer.has(row.id),
+		viewerFollowsAuthor: children.authorFollowedByViewer.has(row.id)
 	};
 }
 

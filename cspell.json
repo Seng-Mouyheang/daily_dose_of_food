@@ -15,6 +15,7 @@
 	"ignoreRegExpList": ["/\\b(pk|sk)_(test|live)_\\w+/"],
 	"words": [
 		"Banh",
+		"followee",
 		"Chok",
 		"Teav",
 		"bindables",
