@@ -5,9 +5,11 @@
 	import ExploreCard from '#lib/explore/ExploreCard.svelte';
 	import {
 		activeCount,
+		EMPTY_FILTERS,
 		exploreUrl,
 		QUICK_CHIPS,
 		quickChipOn,
+		removableChips,
 		toggleQuickChip
 	} from '#lib/explore/explore.ts';
 	import { timeAgo } from '#lib/review/format.ts';
@@ -15,8 +17,22 @@
 
 	let { data }: PageProps = $props();
 
+	// Filters set in the panel that no quick chip shows, named from the panel's facet lists.
+	const removable = $derived.by(() => {
+		const names = new Map(
+			[...data.facets.cuisines, ...data.facets.kinds].map((f) => [f.slug, f.name])
+		);
+		return removableChips(data.filters, (slug) => names.get(slug) ?? slug);
+	});
+	// Clearing drops the sort too: it is one of the removable chips "Clear all" stands for.
+	const anyFilter = $derived(activeCount(data.filters) > 0 || data.filters.sort !== 'new');
+	const clearHref = exploreUrl(EMPTY_FILTERS);
+
 	// The review page's back link returns to this exact grid: filter and page.
 	const from = $derived(encodeURIComponent(page.url.pathname + page.url.search));
+
+	const clearClass =
+		'shrink-0 rounded-lg px-1.5 py-1 text-sm font-semibold whitespace-nowrap text-accent-strong hover:bg-accent-soft';
 
 	// One `now` per render, as on Home, so the grid can't disagree about what "2h ago" means.
 	const cards = $derived.by(() => {
@@ -78,7 +94,22 @@
 					selected={quickChipOn(data.filters, chip)}
 				/>
 			{/each}
+			<!-- With only quick chips on there is no removable row to hold it, so it ends this one. -->
+			{#if anyFilter && !removable.length}
+				<a href={clearHref} class={clearClass}>Clear all</a>
+			{/if}
 		</nav>
+
+		{#if removable.length}
+			<div
+				class="-mx-4 -mt-1 flex scrollbar-none items-center gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:mt-[-8px] lg:flex-wrap lg:overflow-visible lg:px-0"
+			>
+				{#each removable as chip (chip.label)}
+					<FilterPill href={exploreUrl(chip.without)} label={chip.label} removable />
+				{/each}
+				<a href={clearHref} class="{clearClass} text-[13px]">Clear all</a>
+			</div>
+		{/if}
 	</div>
 
 	{#if cards.length}
@@ -102,9 +133,19 @@
 				Show older reviews
 			</a>
 		{/if}
+	{:else if anyFilter}
+		<div
+			class="flex flex-col items-center gap-2.5 px-4 py-9 text-center text-sm text-ink-2 lg:py-9"
+		>
+			<Icon name="sort" size={22} />
+			<span>No reviews match these filters.</span>
+			<a
+				href={clearHref}
+				class="inline-flex h-9 items-center rounded-[10px] bg-sunken px-3.5 text-sm font-bold text-ink"
+				>Clear filters</a
+			>
+		</div>
 	{:else}
-		<p class="p-6 text-center text-[13px] text-ink-3 lg:p-0">
-			{activeCount(data.filters) ? 'No reviews match these filters.' : 'No public reviews yet.'}
-		</p>
+		<p class="p-6 text-center text-[13px] text-ink-3 lg:p-0">No public reviews yet.</p>
 	{/if}
 </main>

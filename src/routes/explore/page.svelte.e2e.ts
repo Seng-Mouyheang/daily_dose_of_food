@@ -43,6 +43,20 @@ test('quick chips combine in the URL and toggle off again', async ({ page }) => 
 	await expect(page).toHaveURL(/\/explore\?meal=breakfast$/);
 });
 
+test('panel-only filters show as removable chips, and Clear all drops everything', async ({
+	page
+}) => {
+	await page.goto('/explore?meal=lunch&max=8&sort=top');
+	await expect(selected(page)).toHaveText(['Lunch']);
+	await page.getByRole('link', { name: 'Remove: Up to $8' }).click();
+	await expect(page).toHaveURL(/\/explore\?sort=top&meal=lunch$/);
+	await expect(page.getByRole('link', { name: 'Remove: Sorted by top rated' })).toBeVisible();
+
+	await page.getByRole('link', { name: 'Clear all' }).click();
+	await expect(page).toHaveURL(/\/explore$/);
+	await expect(selected(page)).toHaveCount(0);
+});
+
 test('hand-edited filters or a cursor fall back instead of failing', async ({ page }) => {
 	for (const query of [
 		'?meal=brunch&max=7',
